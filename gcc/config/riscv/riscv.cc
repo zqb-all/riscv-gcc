@@ -6002,6 +6002,58 @@ riscv_init_libfuncs (void)
   set_optab_libfunc (unord_optab, HFmode, NULL);
 }
 
+/* Helper function for extracting a subword from memory.  */
+
+void
+riscv_subword_address (rtx mem, rtx *aligned_mem, rtx *shift, rtx *mask,
+		       rtx *not_mask)
+{
+  /* Align the memory addess to a word.  */
+  rtx addr = force_reg (Pmode, XEXP (mem, 0));
+
+  rtx aligned_addr = gen_reg_rtx (Pmode);
+  emit_move_insn (aligned_addr,  gen_rtx_AND (Pmode, addr,
+					      gen_int_mode (-4, Pmode)));
+
+  *aligned_mem = change_address (mem, SImode, aligned_addr);
+
+  /* Calculate the shift amount.  */
+  *shift = gen_reg_rtx (SImode);
+  emit_move_insn (*shift, gen_rtx_AND (SImode, gen_lowpart (SImode, addr),
+				      gen_int_mode (3, SImode)));
+  emit_move_insn (*shift, gen_rtx_ASHIFT (SImode, *shift,
+					 gen_int_mode(3, SImode)));
+
+  /* Calculate the mask.  */
+  int unshifted_mask;
+  if (GET_MODE (mem) == QImode)
+    unshifted_mask = 0xFF;
+  else
+    unshifted_mask = 0xFFFF;
+
+  rtx mask_reg = gen_reg_rtx (SImode);
+  emit_move_insn (mask_reg, gen_int_mode(unshifted_mask, SImode));
+
+  emit_move_insn (*mask, gen_rtx_ASHIFT(SImode, mask_reg,
+				       gen_lowpart (QImode, *shift)));
+
+  emit_move_insn (*not_mask, gen_rtx_NOT(SImode, *mask));
+}
+
+/* Leftshift a subword within an SImode register.  */
+
+void
+riscv_lshift_subword (machine_mode mode, rtx value, rtx shift,
+		     rtx *shifted_value)
+{
+  rtx value_reg = gen_reg_rtx (SImode);
+  emit_move_insn (value_reg, simplify_gen_subreg (SImode, value,
+						  mode, 0));
+
+  emit_move_insn(*shifted_value, gen_rtx_ASHIFT(SImode, value_reg,
+						gen_lowpart (QImode, shift)));
+}
+
 /* Initialize the GCC target structure.  */
 #undef TARGET_ASM_ALIGNED_HI_OP
 #define TARGET_ASM_ALIGNED_HI_OP "\t.half\t"
