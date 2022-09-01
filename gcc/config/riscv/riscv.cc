@@ -5033,6 +5033,9 @@ riscv_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
       if (!riscv_v_ext_vector_mode_p (mode))
 	return false;
 
+      if (!V_REG_P (regno + nregs - 1))
+	return false;
+
       /* 3.3.2. LMUL = 2,4,8, register numbers should be multiple of 2,4,8.
 	 but for mask vector register, register numbers can be any number. */
       int lmul = 1;
@@ -5041,6 +5044,8 @@ riscv_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
       if (lmul != 1)
 	return ((regno % lmul) == 0);
     }
+  else if (regno == VL_REGNUM || regno == VTYPE_REGNUM)
+    return true;
   else
     return false;
 
