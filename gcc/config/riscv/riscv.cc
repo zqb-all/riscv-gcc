@@ -5231,10 +5231,6 @@ riscv_init_machine_status (void)
 static poly_uint16
 riscv_convert_vector_bits (void)
 {
-  /* The runtime invariant is only meaningful when TARGET_VECTOR is enabled. */
-  if (!TARGET_VECTOR)
-    return 0;
-
   if (TARGET_MIN_VLEN > 32)
     {
       /* When targetting minimum VLEN > 32, we should use 64-bit chunk size.
