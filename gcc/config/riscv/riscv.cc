@@ -1712,12 +1712,11 @@ riscv_report_v_required (void)
   reported_p = true;
 }
 
-/* Note: clobber register holds the vlenb or 1/2 vlenb or 1/4 vlenb or 1/8 vlenb. */
+/* Note: tmp register holds the vlenb or 1/2 vlenb or 1/4 vlenb or 1/8 vlenb. */
 /* Expand move for quotient.  */
 
 static void
-riscv_expand_quotient (int quotient, machine_mode mode, rtx clobber_vlenb,
-		       rtx dest)
+riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
 {
   if (quotient == 0)
     {
@@ -1728,16 +1727,14 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx clobber_vlenb,
   bool is_neg = quotient < 0;
   quotient = abs (quotient);
   int log2 = exact_log2 (quotient);
-  int vlenb = BYTES_PER_RISCV_VECTOR.coeffs[1];
 
   if (GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
-    emit_insn (gen_rtx_SET (clobber_vlenb,
-			    gen_int_mode (poly_int64 (vlenb, vlenb), mode)));
+    emit_insn (gen_rtx_SET (tmp, gen_int_mode (BYTES_PER_RISCV_VECTOR, mode)));
   else
     {
-      riscv_emit_move (gen_highpart (Pmode, clobber_vlenb), GEN_INT (0));
-      emit_insn (gen_rtx_SET (gen_lowpart (Pmode, clobber_vlenb),
-			      gen_int_mode (poly_int64 (vlenb, vlenb), Pmode)));
+      riscv_emit_move (gen_highpart (Pmode, tmp), GEN_INT (0));
+      emit_insn (gen_rtx_SET (gen_lowpart (Pmode, tmp),
+			      gen_int_mode (BYTES_PER_RISCV_VECTOR, Pmode)));
     }
 
   if (log2 == 0)
@@ -1745,82 +1742,61 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx clobber_vlenb,
       if (is_neg)
 	{
 	  if (GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
-	    emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, clobber_vlenb)));
+	    emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, tmp)));
 	  else
 	    {
 	      /* Handle (const_poly_int:DI [m, n]) in RV32 system. */
 	      /* We should use SImode to simulate DImode negation. */
 	      /* prologue and epilogue can not go through this condition. */
 	      gcc_assert (can_create_pseudo_p ());
-	      rtx reg = gen_reg_rtx (Pmode);
-	      riscv_emit_move (dest, clobber_vlenb);
-	      emit_insn (
-		gen_rtx_SET (reg, gen_rtx_NE (Pmode, gen_lowpart (Pmode, dest),
-					      const0_rtx)));
-	      emit_insn (
-		gen_rtx_SET (gen_highpart (Pmode, dest),
-			     gen_rtx_NEG (Pmode, gen_highpart (Pmode, dest))));
-	      emit_insn (
-		gen_rtx_SET (gen_lowpart (Pmode, dest),
-			     gen_rtx_NEG (Pmode, gen_lowpart (Pmode, dest))));
-	      emit_insn (
-		gen_rtx_SET (gen_highpart (Pmode, dest),
-			     gen_rtx_MINUS (Pmode, gen_highpart (Pmode, dest),
-					    reg)));
+	      rtx result = expand_simple_unop (mode, NEG, tmp, NULL_RTX, false);
+	      riscv_emit_move (dest, result);
 	    }
 	}
       else
-	riscv_emit_move (dest, clobber_vlenb);
+	riscv_emit_move (dest, tmp);
     }
-  else if (log2 != -1
+  else if (pow2p_hwi (quotient)
 	   && GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
     {
       gcc_assert (IN_RANGE (log2, 0, 31));
 
       if (is_neg)
 	{
-	  emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, clobber_vlenb)));
+	  emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, tmp)));
 	  emit_insn (
 	    gen_rtx_SET (dest, gen_rtx_ASHIFT (mode, dest, GEN_INT (log2))));
 	}
       else
-	emit_insn (gen_rtx_SET (dest, gen_rtx_ASHIFT (mode, clobber_vlenb,
-						      GEN_INT (log2))));
+	emit_insn (
+	  gen_rtx_SET (dest, gen_rtx_ASHIFT (mode, tmp, GEN_INT (log2))));
     }
-  else if (exact_log2 (quotient + 1) != -1
+  else if (pow2p_hwi (quotient + 1)
 	   && GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
     {
       gcc_assert (IN_RANGE (exact_log2 (quotient + 1), 0, 31));
-      emit_insn (
-	gen_rtx_SET (dest,
-		     gen_rtx_ASHIFT (mode, clobber_vlenb,
-				     GEN_INT (exact_log2 (quotient + 1)))));
+      emit_insn (gen_rtx_SET (
+	dest, gen_rtx_ASHIFT (mode, tmp, GEN_INT (exact_log2 (quotient + 1)))));
 
       if (is_neg)
-	emit_insn (
-	  gen_rtx_SET (dest, gen_rtx_MINUS (mode, clobber_vlenb, dest)));
+	emit_insn (gen_rtx_SET (dest, gen_rtx_MINUS (mode, tmp, dest)));
       else
-	emit_insn (
-	  gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, clobber_vlenb)));
+	emit_insn (gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, tmp)));
     }
-  else if (exact_log2 (quotient - 1) != -1
+  else if (pow2p_hwi (quotient - 1)
 	   && GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
     {
       gcc_assert (IN_RANGE (exact_log2 (quotient - 1), 0, 31));
-      emit_insn (
-	gen_rtx_SET (dest,
-		     gen_rtx_ASHIFT (mode, clobber_vlenb,
-				     GEN_INT (exact_log2 (quotient - 1)))));
+      emit_insn (gen_rtx_SET (
+	dest, gen_rtx_ASHIFT (mode, tmp, GEN_INT (exact_log2 (quotient - 1)))));
 
       if (is_neg)
 	{
 	  emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, dest)));
-	  emit_insn (
-	    gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, clobber_vlenb)));
+	  emit_insn (gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, tmp)));
 	}
       else
-	emit_insn (
-	  gen_rtx_SET (dest, gen_rtx_PLUS (mode, dest, clobber_vlenb)));
+	emit_insn (gen_rtx_SET (dest, gen_rtx_PLUS (mode, dest, tmp)));
     }
   else
     {
@@ -1834,38 +1810,16 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx clobber_vlenb,
 	riscv_emit_move (dest, GEN_INT (quotient));
 
       if (GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
-	emit_insn (
-	  gen_rtx_SET (dest, gen_rtx_MULT (mode, dest, clobber_vlenb)));
+	emit_insn (gen_rtx_SET (dest, gen_rtx_MULT (mode, dest, tmp)));
       else
 	{
 	  /* Handle (const_poly_int:DI [m, n]) in RV32 system. */
 	  /* We should use SImode to simulate DImode multiplication. */
 	  /* prologue and epilogue can not go through this condition. */
 	  gcc_assert (can_create_pseudo_p ());
-	  rtx reg = gen_reg_rtx (Pmode);
-	  emit_insn (gen_umulsi3_highpart (reg, gen_lowpart (Pmode, dest),
-					   gen_lowpart (Pmode, clobber_vlenb)));
-	  emit_insn (
-	    gen_rtx_SET (gen_highpart (Pmode, clobber_vlenb),
-			 gen_rtx_MULT (Pmode,
-				       gen_highpart (Pmode, clobber_vlenb),
-				       gen_lowpart (Pmode, dest))));
-	  emit_insn (
-	    gen_rtx_SET (gen_highpart (Pmode, dest),
-			 gen_rtx_MULT (Pmode, gen_highpart (Pmode, dest),
-				       gen_lowpart (Pmode, clobber_vlenb))));
-	  emit_insn (
-	    gen_rtx_SET (gen_lowpart (Pmode, dest),
-			 gen_rtx_MULT (Pmode, gen_lowpart (Pmode, dest),
-				       gen_lowpart (Pmode, clobber_vlenb))));
-	  emit_insn (
-	    gen_rtx_SET (gen_highpart (Pmode, dest),
-			 gen_rtx_PLUS (Pmode, gen_highpart (Pmode, dest),
-				       gen_highpart (Pmode, clobber_vlenb))));
-	  emit_insn (
-	    gen_rtx_SET (gen_highpart (Pmode, dest),
-			 gen_rtx_PLUS (Pmode, gen_highpart (Pmode, dest),
-				       reg)));
+	  rtx result = expand_simple_binop (mode, MULT, dest, tmp, NULL_RTX,
+					    false, OPTAB_DIRECT);
+	  riscv_emit_move (dest, result);
 	}
     }
 }
@@ -1873,7 +1827,7 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx clobber_vlenb,
 /* Analyze src and emit const_poly_int mov sequence.  */
 
 void
-riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx clobber, rtx src)
+riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
 {
   poly_int64 value = rtx_to_poly_int64 (src);
   int offset = value.coeffs[0];
@@ -1905,20 +1859,20 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx clobber, rtx src)
       return;
     }
   else if ((factor % vlenb) == 0)
-    riscv_expand_quotient (factor / vlenb, mode, clobber, dest);
+    riscv_expand_quotient (factor / vlenb, mode, tmp, dest);
   else if ((factor % (vlenb / 2)) == 0)
     {
-      riscv_expand_quotient (factor / (vlenb / 2), mode, clobber, dest);
+      riscv_expand_quotient (factor / (vlenb / 2), mode, tmp, dest);
       div_factor = 2;
     }
   else if ((factor % (vlenb / 4)) == 0)
     {
-      riscv_expand_quotient (factor / (vlenb / 4), mode, clobber, dest);
+      riscv_expand_quotient (factor / (vlenb / 4), mode, tmp, dest);
       div_factor = 4;
     }
   else if ((factor % (vlenb / 8)) == 0)
     {
-      riscv_expand_quotient (factor / (vlenb / 8), mode, clobber, dest);
+      riscv_expand_quotient (factor / (vlenb / 8), mode, tmp, dest);
       div_factor = 8;
     }
   else
@@ -1937,23 +1891,10 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx clobber, rtx src)
 	  /* We should use SImode to simulate DImode shift. */
 	  /* prologue and epilogue can not go through this condition. */
 	  gcc_assert (can_create_pseudo_p ());
-	  rtx reg = gen_reg_rtx (Pmode);
-	  emit_insn (
-	    gen_rtx_SET (reg,
-			 gen_rtx_ASHIFT (Pmode, gen_highpart (Pmode, dest),
-					 GEN_INT (GET_MODE_BITSIZE (Pmode)
-						  - exact_log2 (div_factor)))));
-	  emit_insn (
-	    gen_rtx_SET (gen_lowpart (Pmode, dest),
-			 gen_rtx_LSHIFTRT (Pmode, gen_lowpart (Pmode, dest),
-					   GEN_INT (exact_log2 (div_factor)))));
-	  emit_insn (
-	    gen_rtx_SET (gen_lowpart (Pmode, dest),
-			 gen_rtx_IOR (Pmode, reg, gen_lowpart (Pmode, dest))));
-	  emit_insn (
-	    gen_rtx_SET (gen_highpart (Pmode, dest),
-			 gen_rtx_ASHIFTRT (Pmode, gen_highpart (Pmode, dest),
-					   GEN_INT (exact_log2 (div_factor)))));
+	  rtx result = expand_simple_binop (mode, ASHIFTRT, dest,
+					    GEN_INT (exact_log2 (div_factor)),
+					    NULL_RTX, false, OPTAB_DIRECT);
+	  riscv_emit_move (dest, result);
 	}
     }
 
@@ -1972,22 +1913,14 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx clobber, rtx src)
 	  /* We should use SImode to simulate DImode addition. */
 	  /* prologue and epilogue can not go through this condition. */
 	  gcc_assert (can_create_pseudo_p ());
-	  rtx reg = gen_reg_rtx (Pmode);
-	  emit_insn (
-	    gen_rtx_SET (reg, gen_rtx_PLUS (Pmode, gen_lowpart (Pmode, dest),
-					    GEN_INT (constant))));
-	  emit_insn (
-	    gen_rtx_SET (gen_lowpart (Pmode, dest),
-			 gen_rtx_LTU (Pmode, reg, gen_lowpart (Pmode, dest))));
-	  emit_insn (
-	    gen_rtx_SET (gen_highpart (Pmode, dest),
-			 gen_rtx_PLUS (Pmode, gen_lowpart (Pmode, dest),
-				       gen_highpart (Pmode, dest))));
-	  riscv_emit_move (gen_lowpart (Pmode, dest), reg);
+	  rtx result
+	    = expand_simple_binop (mode, PLUS, dest, GEN_INT (constant),
+				   NULL_RTX, false, OPTAB_DIRECT);
+	  riscv_emit_move (dest, result);
 	}
     }
   else
-    emit_insn (gen_rtx_SET (dest, riscv_add_offset (clobber, dest, constant)));
+    emit_insn (gen_rtx_SET (dest, riscv_add_offset (tmp, dest, constant)));
 }
 
 /* If (set DEST SRC) is not a valid move instruction, emit an equivalent
@@ -2015,8 +1948,8 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
 	     In RV64 system, handle (const_poly_int:QI [m, n])
 				    (const_poly_int:HI [m, n])
 				    (const_poly_int:SI [m, n]).  */
-	  rtx clobber = gen_reg_rtx (Pmode);
-	  riscv_legitimize_poly_move (Pmode, gen_lowpart (Pmode, dest), clobber,
+	  rtx tmp = gen_reg_rtx (Pmode);
+	  riscv_legitimize_poly_move (Pmode, gen_lowpart (Pmode, dest), tmp,
 				      src);
 	}
       else
@@ -2024,8 +1957,8 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
 	  /* In RV32 system, handle (const_poly_int:SI [m, n])
 				    (const_poly_int:DI [m, n]).
 	     In RV64 system, handle (const_poly_int:DI [m, n]).  */
-	  rtx clobber = gen_reg_rtx (mode);
-	  riscv_legitimize_poly_move (mode, dest, clobber, src);
+	  rtx tmp = gen_reg_rtx (mode);
+	  riscv_legitimize_poly_move (mode, dest, tmp, src);
 	}
       return true;
     }
