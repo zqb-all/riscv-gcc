@@ -5528,7 +5528,12 @@ riscv_convert_vector_bits (void)
       riscv_bytes_per_vector_chunk = 4;
     }
 
-  return poly_uint16 (1, 1);
+  /* Set riscv_vector_chunks as poly (1, 1) run-time constant if TARGET_VECTOR is enabled.
+     Set riscv_vector_chunks as 1 compile-time constant if TARGET_VECTOR is disabled.
+     riscv_vector_chunks is used in "riscv-modes.def" to set RVV mode size.  
+     The RVV machine modes size are run-time constant if TARGET_VECTOR is enabled.
+     The RVV machine modes size remains default compile-time constant if TARGET_VECTOR is disabled.  */ 
+  return TARGET_VECTOR ? poly_uint16 (1, 1) : 1;
 }
 
 /* Implement TARGET_OPTION_OVERRIDE.  */
