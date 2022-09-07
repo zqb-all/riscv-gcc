@@ -107,4 +107,8 @@ struct riscv_cpu_info {
 
 extern const riscv_cpu_info *riscv_find_cpu (const char *);
 
+extern void riscv_parse_arch_string (const char *isa,
+			 struct gcc_options *opts,
+			 location_t loc);
+
 #endif /* ! GCC_RISCV_PROTOS_H */

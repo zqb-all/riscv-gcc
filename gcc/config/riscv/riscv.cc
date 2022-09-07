@@ -59,6 +59,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "opts.h"
 #include "rtl-iter.h"
 #include "tm-constrs.h"
+#include "selftest.h"
+#include "selftest-rtl.h"
 
 /* True if X is an UNSPEC wrapper around a SYMBOL_REF or LABEL_REF.  */
 #define UNSPEC_ADDRESS_P(X)					\
@@ -6331,6 +6333,78 @@ riscv_lshift_subword (machine_mode mode, rtx value, rtx shift,
   emit_move_insn(*shifted_value, gen_rtx_ASHIFT(SImode, value_reg,
 						gen_lowpart (QImode, shift)));
 }
+#if CHECKING_P
+
+namespace selftest {
+
+class riscv_selftest_arch_abi_setter
+{
+private:
+    std::string m_arch_backup;
+    enum riscv_abi_type m_abi_backup;
+
+    void reinit() {
+      init_adjust_machine_modes ();
+      init_derived_machine_modes ();
+      riscv_option_override();
+      reinit_regs();
+    }
+public:
+    riscv_selftest_arch_abi_setter (const char *arch, enum riscv_abi_type abi)
+	: m_arch_backup (riscv_arch_str ()),
+	m_abi_backup (riscv_abi)
+    {
+      riscv_parse_arch_string (arch, &global_options, UNKNOWN_LOCATION);
+      riscv_abi = abi;
+      reinit();
+    }
+    ~riscv_selftest_arch_abi_setter()
+    {
+      riscv_parse_arch_string (m_arch_backup.c_str(), &global_options, UNKNOWN_LOCATION);
+      riscv_abi = m_abi_backup;
+      reinit();
+    }
+};
+
+// TODO: Create riscv-selftest.c and move all selftest stuffs to that.
+static void
+riscv_run_selftests (void)
+{
+  std::string arch_backup = riscv_arch_str ();
+  enum riscv_abi_type abi_backup = riscv_abi;
+
+  {
+    riscv_selftest_arch_abi_setter rv("rv64imafdv", ABI_LP64D);
+
+    rtl_dump_test t (SELFTEST_LOCATION,
+  		   locate_file ("riscv/empty-func.rtl"));
+    set_new_first_and_last_insn (NULL, NULL);
+    rtx reg = gen_reg_rtx (DImode);
+    emit_move_insn (reg, gen_int_mode (BYTES_PER_RISCV_VECTOR * 2, DImode));
+    rtx_insn *insn = get_insns ();
+    rtx pat = PATTERN (insn);
+    /* TODO: Add ASSERT_* */
+  }
+  {
+    riscv_selftest_arch_abi_setter rv("rv32imafdv", ABI_ILP32);
+
+    rtl_dump_test t (SELFTEST_LOCATION,
+  		   locate_file ("riscv/empty-func.rtl"));
+    set_new_first_and_last_insn (NULL, NULL);
+    rtx reg = gen_reg_rtx (DImode);
+    emit_move_insn (reg, gen_int_mode (BYTES_PER_RISCV_VECTOR * 2, DImode));
+    rtx_insn *insn = get_insns ();
+    rtx pat = PATTERN (insn);
+    /* TODO: Add ASSERT_* */
+  }
+}
+}
+#endif
+
+#if CHECKING_P
+#undef TARGET_RUN_TARGET_SELFTESTS
+#define TARGET_RUN_TARGET_SELFTESTS selftest::riscv_run_selftests
+#endif /* #if CHECKING_P */
 
 /* Initialize the GCC target structure.  */
 #undef TARGET_ASM_ALIGNED_HI_OP
