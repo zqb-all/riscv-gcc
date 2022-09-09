@@ -6699,6 +6699,34 @@ riscv_run_selftests (void)
       }
   }
   {
+    riscv_selftest_arch_abi_setter rv ("rv64imafd_zve32x1p0", ABI_LP64D);
+    rtl_dump_test t (SELFTEST_LOCATION, locate_file ("riscv/empty-func.rtl"));
+    set_new_first_and_last_insn (NULL, NULL);
+    /* Test results for (const_poly_int:DI) in RV32 system.  */
+    for (unsigned int i = 0; i < worklist.length (); ++i)
+      {
+	start_sequence ();
+	rtx dest = gen_reg_rtx (Pmode);
+	emit_move_insn (dest, gen_int_mode (worklist[i], Pmode));
+	ASSERT_TRUE (known_eq (calculate_x_in_sequence (dest), worklist[i]));
+	end_sequence ();
+      }
+  }
+  {
+    riscv_selftest_arch_abi_setter rv ("rv32imafd_zve32x1p0", ABI_ILP32);
+    rtl_dump_test t (SELFTEST_LOCATION, locate_file ("riscv/empty-func.rtl"));
+    set_new_first_and_last_insn (NULL, NULL);
+    /* Test results for (const_poly_int:DI) in RV32 system.  */
+    for (unsigned int i = 0; i < worklist.length (); ++i)
+      {
+	start_sequence ();
+	rtx dest = gen_reg_rtx (Pmode);
+	emit_move_insn (dest, gen_int_mode (worklist[i], Pmode));
+	ASSERT_TRUE (known_eq (calculate_x_in_sequence (dest), worklist[i]));
+	end_sequence ();
+      }
+  }
+  {
     riscv_selftest_arch_abi_setter rv ("rv32imafdv", ABI_ILP32);
     rtl_dump_test t (SELFTEST_LOCATION, locate_file ("riscv/empty-func.rtl"));
     set_new_first_and_last_insn (NULL, NULL);
