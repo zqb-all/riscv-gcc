@@ -61,6 +61,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm-constrs.h"
 #include "selftest.h"
 #include "selftest-rtl.h"
+#include <map>
 
 /* True if X is an UNSPEC wrapper around a SYMBOL_REF or LABEL_REF.  */
 #define UNSPEC_ADDRESS_P(X)					\
@@ -1730,20 +1731,11 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
   quotient = abs (quotient);
   int log2 = exact_log2 (quotient);
 
-  if (GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
-    emit_insn (gen_rtx_SET (tmp, gen_int_mode (BYTES_PER_RISCV_VECTOR, mode)));
-  else
-    {
-      riscv_emit_move (gen_highpart (Pmode, tmp), GEN_INT (0));
-      emit_insn (gen_rtx_SET (gen_lowpart (Pmode, tmp),
-			      gen_int_mode (BYTES_PER_RISCV_VECTOR, Pmode)));
-    }
-
-  if (log2 == 0)
+  if (quotient == 1)
     {
       if (is_neg)
 	{
-	  if (GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
+	  if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
 	    emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, tmp)));
 	  else
 	    {
@@ -1751,6 +1743,8 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
 	      /* We should use SImode to simulate DImode negation. */
 	      /* prologue and epilogue can not go through this condition. */
 	      gcc_assert (can_create_pseudo_p ());
+	      gcc_assert (
+		known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
 	      rtx result = expand_simple_unop (mode, NEG, tmp, NULL_RTX, false);
 	      riscv_emit_move (dest, result);
 	    }
@@ -1759,7 +1753,7 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
 	riscv_emit_move (dest, tmp);
     }
   else if (pow2p_hwi (quotient)
-	   && GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
+	   && known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
     {
       gcc_assert (IN_RANGE (log2, 0, 31));
 
@@ -1774,7 +1768,7 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
 	  gen_rtx_SET (dest, gen_rtx_ASHIFT (mode, tmp, GEN_INT (log2))));
     }
   else if (pow2p_hwi (quotient + 1)
-	   && GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
+	   && known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
     {
       gcc_assert (IN_RANGE (exact_log2 (quotient + 1), 0, 31));
       emit_insn (gen_rtx_SET (
@@ -1786,7 +1780,7 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
 	emit_insn (gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, tmp)));
     }
   else if (pow2p_hwi (quotient - 1)
-	   && GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
+	   && known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
     {
       gcc_assert (IN_RANGE (exact_log2 (quotient - 1), 0, 31));
       emit_insn (gen_rtx_SET (
@@ -1811,7 +1805,7 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
       else
 	riscv_emit_move (dest, GEN_INT (quotient));
 
-      if (GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
+      if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
 	emit_insn (gen_rtx_SET (dest, gen_rtx_MULT (mode, dest, tmp)));
       else
 	{
@@ -1819,6 +1813,7 @@ riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
 	  /* We should use SImode to simulate DImode multiplication. */
 	  /* prologue and epilogue can not go through this condition. */
 	  gcc_assert (can_create_pseudo_p ());
+	  gcc_assert (known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
 	  rtx result = expand_simple_binop (mode, MULT, dest, tmp, NULL_RTX,
 					    false, OPTAB_DIRECT);
 	  riscv_emit_move (dest, result);
@@ -1838,7 +1833,8 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
   int div_factor = 0;
 
   /* Calculate (const_poly_int:MODE [m, n]) using scalar instructions.
-     For any (const_poly_int:MODE [m, n]), the calculation formula is as follows.
+     For any (const_poly_int:MODE [m, n]), the calculation formula is as
+     follows.
 
      constant = m - n.
 
@@ -1846,13 +1842,23 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
      base = vlenb (4, 4) or vlenb / 2 (2, 2) or vlenb / 4 (1, 1).
 
      When minimum VLEN > 32, poly of VLENb = (8, 8).
-     base = vlenb (8, 8) or vlenb / 2 (4, 4) or vlenb / 4 (2, 2) or vlenb / 8 (1, 1).
+     base = vlenb (8, 8) or vlenb / 2 (4, 4) or vlenb / 4 (2, 2) or vlenb / 8
+     (1, 1).
 
      magn = (n, n) / base.
 
      (m, n) = base * magn + constant.
 
      This calculation doesn't need div operation.  */
+
+  if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+    emit_insn (gen_rtx_SET (tmp, gen_int_mode (BYTES_PER_RISCV_VECTOR, mode)));
+  else
+    {
+      riscv_emit_move (gen_highpart (Pmode, tmp), GEN_INT (0));
+      emit_insn (gen_rtx_SET (gen_lowpart (Pmode, tmp),
+			      gen_int_mode (BYTES_PER_RISCV_VECTOR, Pmode)));
+    }
 
   if (BYTES_PER_RISCV_VECTOR.is_constant ())
     {
@@ -1861,31 +1867,22 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
       return;
     }
   else if ((factor % vlenb) == 0)
-    riscv_expand_quotient (factor / vlenb, mode, tmp, dest);
+    div_factor = 1;
   else if ((factor % (vlenb / 2)) == 0)
-    {
-      riscv_expand_quotient (factor / (vlenb / 2), mode, tmp, dest);
-      div_factor = 2;
-    }
+    div_factor = 2;
   else if ((factor % (vlenb / 4)) == 0)
-    {
-      riscv_expand_quotient (factor / (vlenb / 4), mode, tmp, dest);
-      div_factor = 4;
-    }
+    div_factor = 4;
   else if ((factor % (vlenb / 8)) == 0)
-    {
-      riscv_expand_quotient (factor / (vlenb / 8), mode, tmp, dest);
-      div_factor = 8;
-    }
+    div_factor = 8;
   else
     gcc_unreachable ();
 
-  if (div_factor != 0)
+  if (div_factor != 1)
     {
-      if (GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
+      if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
 	emit_insn (
-	  gen_rtx_SET (dest,
-		       gen_rtx_ASHIFTRT (mode, dest,
+	  gen_rtx_SET (tmp,
+		       gen_rtx_LSHIFTRT (mode, tmp,
 					 GEN_INT (exact_log2 (div_factor)))));
       else
 	{
@@ -1893,20 +1890,22 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
 	  /* We should use SImode to simulate DImode shift. */
 	  /* prologue and epilogue can not go through this condition. */
 	  gcc_assert (can_create_pseudo_p ());
-	  rtx result = expand_simple_binop (mode, ASHIFTRT, dest,
+	  gcc_assert (known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
+	  rtx result = expand_simple_binop (mode, LSHIFTRT, tmp,
 					    GEN_INT (exact_log2 (div_factor)),
 					    NULL_RTX, false, OPTAB_DIRECT);
-	  riscv_emit_move (dest, result);
+	  riscv_emit_move (tmp, result);
 	}
     }
 
+  riscv_expand_quotient (factor / (vlenb / div_factor), mode, tmp, dest);
   HOST_WIDE_INT constant = offset - factor;
 
   if (constant == 0)
     return;
   else if (SMALL_OPERAND (constant))
     {
-      if (GET_MODE_SIZE (mode).to_constant () <= GET_MODE_SIZE (Pmode))
+      if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
 	emit_insn (
 	  gen_rtx_SET (dest, gen_rtx_PLUS (mode, dest, GEN_INT (constant))));
       else
@@ -1915,6 +1914,7 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
 	  /* We should use SImode to simulate DImode addition. */
 	  /* prologue and epilogue can not go through this condition. */
 	  gcc_assert (can_create_pseudo_p ());
+	  gcc_assert (known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
 	  rtx result
 	    = expand_simple_binop (mode, PLUS, dest, GEN_INT (constant),
 				   NULL_RTX, false, OPTAB_DIRECT);
@@ -1922,7 +1922,33 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
 	}
     }
   else
-    emit_insn (gen_rtx_SET (dest, riscv_add_offset (tmp, dest, constant)));
+    {
+      if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+	{
+	  rtx high;
+
+	  /* Leave OFFSET as a 16-bit offset and put the excess in HIGH.
+	     The addition inside the macro CONST_HIGH_PART may cause an
+	     overflow, so we need to force a sign-extension check.  */
+	  high = gen_int_mode (CONST_HIGH_PART (constant), Pmode);
+	  constant = CONST_LOW_PART (constant);
+	  riscv_emit_move (tmp, high);
+	  riscv_emit_move (dest, gen_rtx_PLUS (Pmode, tmp, dest));
+	  riscv_emit_move (dest, plus_constant (Pmode, dest, constant));
+	}
+      else
+	{
+	  /* Handle (const_poly_int:DI [m, n]) in RV32 system. */
+	  /* We should use SImode to simulate DImode addition. */
+	  /* prologue and epilogue can not go through this condition. */
+	  gcc_assert (can_create_pseudo_p ());
+	  gcc_assert (known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
+	  rtx result
+	    = expand_simple_binop (mode, PLUS, dest, GEN_INT (constant),
+				   NULL_RTX, false, OPTAB_DIRECT);
+	  riscv_emit_move (dest, result);
+	}
+    }
 }
 
 /* If (set DEST SRC) is not a valid move instruction, emit an equivalent
@@ -6340,62 +6366,351 @@ namespace selftest {
 class riscv_selftest_arch_abi_setter
 {
 private:
-    std::string m_arch_backup;
-    enum riscv_abi_type m_abi_backup;
+  std::string m_arch_backup;
+  enum riscv_abi_type m_abi_backup;
 
-    void reinit() {
-      init_adjust_machine_modes ();
-      init_derived_machine_modes ();
-      riscv_option_override();
-      reinit_regs();
-    }
+  void reinit ()
+  {
+    riscv_option_override ();
+    init_adjust_machine_modes ();
+    init_derived_machine_modes ();
+    reinit_regs ();
+  }
+
 public:
-    riscv_selftest_arch_abi_setter (const char *arch, enum riscv_abi_type abi)
-	: m_arch_backup (riscv_arch_str ()),
-	m_abi_backup (riscv_abi)
-    {
-      riscv_parse_arch_string (arch, &global_options, UNKNOWN_LOCATION);
-      riscv_abi = abi;
-      reinit();
-    }
-    ~riscv_selftest_arch_abi_setter()
-    {
-      riscv_parse_arch_string (m_arch_backup.c_str(), &global_options, UNKNOWN_LOCATION);
-      riscv_abi = m_abi_backup;
-      reinit();
-    }
+  riscv_selftest_arch_abi_setter (const char *arch, enum riscv_abi_type abi)
+    : m_arch_backup (riscv_arch_str ()), m_abi_backup (riscv_abi)
+  {
+    riscv_parse_arch_string (arch, &global_options, UNKNOWN_LOCATION);
+    riscv_abi = abi;
+    reinit ();
+  }
+  ~riscv_selftest_arch_abi_setter ()
+  {
+    riscv_parse_arch_string (m_arch_backup.c_str (), &global_options,
+			     UNKNOWN_LOCATION);
+    riscv_abi = m_abi_backup;
+    reinit ();
+  }
 };
 
-// TODO: Create riscv-selftest.c and move all selftest stuffs to that.
+/* Return true if the REG_EQUAL for corresponding expression is found.  */
+static rtx_insn *
+get_expr_reg_equal_p (rtx_insn *insn, rtx expr)
+{
+  for (insn = NEXT_INSN (insn); insn; insn = NEXT_INSN (insn))
+    {
+      rtx note = find_reg_equal_equiv_note (insn);
+      if (note && rtx_equal_p (XEXP (note, 0), expr))
+	return insn;
+    }
+  return nullptr;
+}
+
+/* Calculate the value of x register in the sequence.  */
+static poly_int64
+calculate_x_in_sequence (rtx x)
+{
+  rtx_insn *insn;
+  std::map<int, poly_int64> worklist;
+
+  for (insn = get_insns (); insn; insn = NEXT_INSN (insn))
+    {
+      if (!insn)
+	break;
+
+      rtx pat = PATTERN (insn);
+
+      if (GET_CODE (pat) == CLOBBER)
+	continue;
+
+      rtx dest = SET_DEST (pat);
+      rtx src = SET_SRC (pat);
+      poly_int64 new_value;
+      rtx op1, op2;
+      std::map<int, poly_int64>::iterator iter1, iter2;
+
+      if (UNARY_P (src))
+	{
+	  op1 = XEXP (src, 0);
+	  if (SUBREG_P (op1))
+	    iter1 = worklist.find (REGNO (SUBREG_REG (op1)));
+	  else
+	    iter1 = worklist.find (REGNO (op1));
+	}
+      if (BINARY_P (src))
+	{
+	  op1 = XEXP (src, 0);
+	  op2 = XEXP (src, 1);
+	  if (SUBREG_P (op1))
+	    iter1 = worklist.find (REGNO (SUBREG_REG (op1)));
+	  else
+	    iter1 = worklist.find (REGNO (op1));
+	  if (SUBREG_P (op2))
+	    iter2 = worklist.find (REGNO (SUBREG_REG (op2)));
+	  else
+	    iter2 = worklist.find (REGNO (op2));
+	}
+
+      switch (GET_CODE (src))
+	{
+	case CONST_POLY_INT:
+	  new_value = rtx_to_poly_int64 (src);
+	  break;
+	case CONST_INT:
+	  if (SUBREG_P (dest))
+	    {
+	      /* For DImode in RV32 system, the sequence should be:
+	      (insn 1 0 2 (set (subreg:SI (reg:DI 135) 4)
+		(const_int 0 [0])) -1
+	       (nil))
+	      (insn 2 1 3 (set (subreg:SI (reg:DI 135) 0)
+		(const_poly_int:SI [8, 8])) -1
+	       (nil))  */
+	      gcc_assert (rtx_equal_p (src, const0_rtx));
+	      continue;
+	    }
+	  else
+	    new_value = INTVAL (src);
+	  break;
+	case REG:
+	  gcc_assert (worklist.find (REGNO (src)) != worklist.end ());
+	  new_value = worklist.find (REGNO (src))->second;
+	  break;
+	case NEG:
+	  gcc_assert (iter1 != worklist.end ());
+	  new_value = -iter1->second;
+	  break;
+	case ASHIFT:
+	  if (SUBREG_P (op1))
+	    {
+	      insn = NEXT_INSN (insn);
+	      if (iter1 != worklist.end ())
+		new_value
+		  = exact_div (iter1->second,
+			       1 << (GET_MODE_BITSIZE (Pmode) - INTVAL (op2)));
+	      else
+		gcc_unreachable ();
+	      dest = SET_DEST (PATTERN (insn));
+	      /* The consecutive 4 instructions in the sequence belongs to ashift:DI in RV32 system.  */
+	      insn = NEXT_INSN (NEXT_INSN (insn));
+	    }
+	  else
+	    {
+	      if (iter1 != worklist.end ())
+		new_value = iter1->second << INTVAL (op2);
+	      else
+		gcc_unreachable ();
+	    }
+	  break;
+	case LSHIFTRT:
+	  if (iter1 != worklist.end ())
+	    new_value = exact_div (iter1->second, 1 << INTVAL (op2));
+	  else
+	    gcc_unreachable ();
+	  break;
+	case MULT:
+	  gcc_assert (iter1 != worklist.end () && iter2 != worklist.end ());
+	  if (iter1->second.is_constant ())
+	    new_value = iter1->second.to_constant () * iter2->second;
+	  else if (iter2->second.is_constant ())
+	    new_value = iter1->second * iter2->second.to_constant ();
+	  else
+	    gcc_unreachable ();
+	  if (SUBREG_P (op1))
+	    {
+	      insn = get_expr_reg_equal_p (insn,
+					   gen_rtx_MULT (DImode, XEXP (op1, 0),
+							 XEXP (op2, 0)));
+	      if (insn != nullptr)
+		dest = SET_DEST (PATTERN (insn));
+	    }
+	  break;
+	case PLUS:
+	  if (!CONST_INT_P (op1) && !CONST_INT_P (op2))
+	    {
+	      gcc_assert (iter1 != worklist.end () && iter2 != worklist.end ());
+	      new_value = iter1->second + iter2->second;
+	      if (SUBREG_P (op1) && SUBREG_P (op2))
+		{
+		  insn = get_expr_reg_equal_p (
+		    insn, gen_rtx_PLUS (DImode, XEXP (op1, 0), XEXP (op2, 0)));
+		  if (insn != nullptr)
+		    dest = SET_DEST (PATTERN (insn));
+		}
+	    }
+	  else if (CONST_INT_P (op2))
+	    {
+	      gcc_assert (iter1 != worklist.end ());
+	      new_value = iter1->second + INTVAL (op2);
+	    }
+	  else
+	    {
+	      gcc_assert (iter2 != worklist.end ());
+	      new_value = iter2->second + INTVAL (op1);
+	    }
+	  break;
+	case MINUS:
+	  gcc_assert (iter1 != worklist.end () && iter2 != worklist.end ());
+	  new_value = iter1->second - iter2->second;
+	  if (SUBREG_P (op1) && SUBREG_P (op2))
+	    {
+	      insn = get_expr_reg_equal_p (insn,
+					   gen_rtx_MINUS (DImode, XEXP (op1, 0),
+							  XEXP (op2, 0)));
+	      if (insn != nullptr)
+		dest = SET_DEST (PATTERN (insn));
+	    }
+	  break;
+	default:
+	  gcc_unreachable ();
+	}
+
+      if (REG_P (dest) && worklist.find (REGNO (dest)) != worklist.end ())
+	worklist.find (REGNO (dest))->second = new_value;
+      else if (SUBREG_P (dest)
+	       && worklist.find (REGNO (SUBREG_REG (dest))) != worklist.end ())
+	worklist.find (REGNO (SUBREG_REG (dest)))->second = new_value;
+      else if (REG_P (dest))
+	worklist.insert (std::make_pair (REGNO (dest), new_value));
+      else
+	worklist.insert (std::make_pair (REGNO (SUBREG_REG (dest)), new_value));
+    }
+
+  if (worklist.find (REGNO (x)) != worklist.end ())
+    return worklist.find (REGNO (x))->second;
+
+  return 0;
+}
+
+/* Run all target-specific selftests.  */
+
 static void
 riscv_run_selftests (void)
 {
-  std::string arch_backup = riscv_arch_str ();
-  enum riscv_abi_type abi_backup = riscv_abi;
+  auto_vec<poly_int64> worklist;
+  /* Case 1: (set ((dest) (const_poly_int:P [BYTES_PER_RISCV_VECTOR]))).  */
+  worklist.safe_push (BYTES_PER_RISCV_VECTOR);
+  /* Case 2: (set ((dest) (const_poly_int:P [BYTES_PER_RISCV_VECTOR * 8]))).  */
+  worklist.safe_push (BYTES_PER_RISCV_VECTOR * 8);
+  /* Case 3: (set ((dest) (const_poly_int:P [BYTES_PER_RISCV_VECTOR * 32]))). */
+  worklist.safe_push (BYTES_PER_RISCV_VECTOR * 32);
+  /* Case 4: (set ((dest) (const_poly_int:P [207, 0]))).  */
+  worklist.safe_push (poly_int64 (207, 0));
+  /* Case 5: (set ((dest) (const_poly_int:P [-207, 0]))).  */
+  worklist.safe_push (poly_int64 (-207, 0));
+  /* Case 6: (set ((dest) (const_poly_int:P [0, 207]))).  */
+  worklist.safe_push (poly_int64 (0, 207));
+  /* Case 7: (set ((dest) (const_poly_int:P [0, -207]))).  */
+  worklist.safe_push (poly_int64 (0, -207));
+  /* Case 8: (set ((dest) (const_poly_int:P [5555, 0]))).  */
+  worklist.safe_push (poly_int64 (5555, 0));
+  /* Case 9: (set ((dest) (const_poly_int:P [0, 5555]))).  */
+  worklist.safe_push (poly_int64 (0, 5555));
+  /* Case 10: (set ((dest) (const_poly_int:P [4096, 4096]))).  */
+  worklist.safe_push (poly_int64 (4096, 4096));
+  /* Case 11: (set ((dest) (const_poly_int:P [17, 4088]))).  */
+  worklist.safe_push (poly_int64 (17, 4088));
+  /* Case 12: (set ((dest) (const_poly_int:P [3889, 4104]))).  */
+  worklist.safe_push (poly_int64 (3889, 4104));
+  /* Case 13: (set ((dest) (const_poly_int:P [-4096, -4096]))).  */
+  worklist.safe_push (poly_int64 (-4096, -4096));
+  /* Case 14: (set ((dest) (const_poly_int:P [219, -4088]))).  */
+  worklist.safe_push (poly_int64 (219, -4088));
+  /* Case 15: (set ((dest) (const_poly_int:P [-4309, -4104]))).  */
+  worklist.safe_push (poly_int64 (-4309, -4104));
+  /* Case 16: (set ((dest) (const_poly_int:P [-7337, 88]))).  */
+  worklist.safe_push (poly_int64 (-7337, 88));
+  /*  Case 17: (set ((dest) (const_poly_int:P [9317, -88]))).  */
+  worklist.safe_push (poly_int64 (9317, -88));
+  /* Case 18: (set ((dest) (const_poly_int:P [4, 4]))).  */
+  worklist.safe_push (poly_int64 (4, 4));
+  /* Case 19: (set ((dest) (const_poly_int:P [17, 4]))).  */
+  worklist.safe_push (poly_int64 (17, 4));
+  /* Case 20: (set ((dest) (const_poly_int:P [-7337, 4]))).  */
+  worklist.safe_push (poly_int64 (-7337, 4));
+  /* Case 21: (set ((dest) (const_poly_int:P [-4, -4]))).  */
+  worklist.safe_push (poly_int64 (-4, -4));
+  /* Case 22: (set ((dest) (const_poly_int:P [-389, -4]))).  */
+  worklist.safe_push (poly_int64 (-389, -4));
+  /* Case 23: (set ((dest) (const_poly_int:P [4789, -4]))).  */
+  worklist.safe_push (poly_int64 (4789, -4));
+  /* Case 24: (set ((dest) (const_poly_int:P [-5977, 1508]))).  */
+  worklist.safe_push (poly_int64 (-5977, 1508));
+  /* Case 25: (set ((dest) (const_poly_int:P [219, -1508]))).  */
+  worklist.safe_push (poly_int64 (219, -1508));
+  /* Case 26: (set ((dest) (const_poly_int:P [2, 2]))).  */
+  worklist.safe_push (poly_int64 (2, 2));
+  /* Case 27: (set ((dest) (const_poly_int:P [33, 2]))).  */
+  worklist.safe_push (poly_int64 (33, 2));
+  /* Case 28: (set ((dest) (const_poly_int:P [-7337, 2]))).  */
+  worklist.safe_push (poly_int64 (-7337, 2));
+  /* Case 29: (set ((dest) (const_poly_int:P [-2, -2]))).  */
+  worklist.safe_push (poly_int64 (-2, -2));
+  /* Case 30: (set ((dest) (const_poly_int:P [-389, -2]))).  */
+  worklist.safe_push (poly_int64 (-389, -2));
+  /* Case 31: (set ((dest) (const_poly_int:P [4789, -2]))).  */
+  worklist.safe_push (poly_int64 (4789, -2));
+  /* Case 32: (set ((dest) (const_poly_int:P [-3567, 954]))).  */
+  worklist.safe_push (poly_int64 (-3567, 954));
+  /* Case 33: (set ((dest) (const_poly_int:P [945, -954]))).  */
+  worklist.safe_push (poly_int64 (945, -954));
+  /* Case 34: (set ((dest) (const_poly_int:P [1, 1]))).  */
+  worklist.safe_push (poly_int64 (1, 1));
+  /* Case 35: (set ((dest) (const_poly_int:P [977, 1]))).  */
+  worklist.safe_push (poly_int64 (977, 1));
+  /* Case 36: (set ((dest) (const_poly_int:P [-339, 1]))).  */
+  worklist.safe_push (poly_int64 (-339, 1));
+  /* Case 37: (set ((dest) (const_poly_int:P [-1, -1]))).  */
+  worklist.safe_push (poly_int64 (-1, -1));
+  /* Case 38: (set ((dest) (const_poly_int:P [-12, -1]))).  */
+  worklist.safe_push (poly_int64 (-12, -1));
+  /* Case 39: (set ((dest) (const_poly_int:P [44, -1]))).  */
+  worklist.safe_push (poly_int64 (44, -1));
+  /* Case 40: (set ((dest) (const_poly_int:P [-9567, 77]))).  */
+  worklist.safe_push (poly_int64 (9567, 77));
+  /* Case 41: (set ((dest) (const_poly_int:P [3467, -77]))).  */
+  worklist.safe_push (poly_int64 (3467, -77));
 
   {
-    riscv_selftest_arch_abi_setter rv("rv64imafdv", ABI_LP64D);
-
-    rtl_dump_test t (SELFTEST_LOCATION,
-  		   locate_file ("riscv/empty-func.rtl"));
+    /* Test poly manipulation in RV64 system with TARGET_MIN_VLEN > 32.  */
+    riscv_selftest_arch_abi_setter rv ("rv64imafdv", ABI_LP64D);
+    rtl_dump_test t (SELFTEST_LOCATION, locate_file ("riscv/empty-func.rtl"));
     set_new_first_and_last_insn (NULL, NULL);
-    rtx reg = gen_reg_rtx (DImode);
-    emit_move_insn (reg, gen_int_mode (BYTES_PER_RISCV_VECTOR * 2, DImode));
-    rtx_insn *insn = get_insns ();
-    rtx pat = PATTERN (insn);
-    /* TODO: Add ASSERT_* */
+
+    /* Test compilation.  */
+    emit_move_insn (gen_reg_rtx (QImode),
+		    gen_int_mode (BYTES_PER_RISCV_VECTOR, QImode));
+    emit_move_insn (gen_reg_rtx (HImode),
+		    gen_int_mode (BYTES_PER_RISCV_VECTOR, HImode));
+    emit_move_insn (gen_reg_rtx (SImode),
+		    gen_int_mode (BYTES_PER_RISCV_VECTOR, SImode));
+    emit_move_insn (gen_reg_rtx (DImode),
+		    gen_int_mode (BYTES_PER_RISCV_VECTOR, DImode));
+
+    /* Test results for (const_poly_int:P).  */
+    for (unsigned int i = 0; i < worklist.length (); ++i)
+      {
+	start_sequence ();
+	rtx dest = gen_reg_rtx (Pmode);
+	emit_move_insn (dest, gen_int_mode (worklist[i], Pmode));
+	ASSERT_TRUE (known_eq (calculate_x_in_sequence (dest), worklist[i]));
+	end_sequence ();
+      }
   }
   {
-    riscv_selftest_arch_abi_setter rv("rv32imafdv", ABI_ILP32);
-
-    rtl_dump_test t (SELFTEST_LOCATION,
-  		   locate_file ("riscv/empty-func.rtl"));
+    riscv_selftest_arch_abi_setter rv ("rv32imafdv", ABI_ILP32);
+    rtl_dump_test t (SELFTEST_LOCATION, locate_file ("riscv/empty-func.rtl"));
     set_new_first_and_last_insn (NULL, NULL);
-    rtx reg = gen_reg_rtx (DImode);
-    emit_move_insn (reg, gen_int_mode (BYTES_PER_RISCV_VECTOR * 2, DImode));
-    rtx_insn *insn = get_insns ();
-    rtx pat = PATTERN (insn);
-    /* TODO: Add ASSERT_* */
+    /* Test results for (const_poly_int:DI) in RV32 system.  */
+    for (unsigned int i = 0; i < worklist.length (); ++i)
+      {
+	start_sequence ();
+	rtx dest = gen_reg_rtx (DImode);
+	emit_move_insn (dest, gen_int_mode (worklist[i], DImode));
+	ASSERT_TRUE (known_eq (calculate_x_in_sequence (dest), worklist[i]));
+	end_sequence ();
+      }
   }
 }
 }
