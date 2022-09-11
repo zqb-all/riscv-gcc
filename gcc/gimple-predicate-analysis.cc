@@ -926,31 +926,35 @@ simple_control_dep_chain (vec<edge>& chain, basic_block from, basic_block to)
     {
       basic_block dest = src;
       src = get_immediate_dominator (CDI_DOMINATORS, src);
-      edge pred_e;
-      if (single_pred_p (dest)
-	  && (pred_e = find_edge (src, dest)))
-	chain.safe_push (pred_e);
+      if (single_pred_p (dest))
+	{
+	  edge pred_e = single_pred_edge (dest);
+	  gcc_assert (pred_e->src == src);
+	  if (!(pred_e->flags & ((EDGE_FAKE | EDGE_ABNORMAL | EDGE_DFS_BACK)))
+	      && !single_succ_p (src))
+	    chain.safe_push (pred_e);
+	}
     }
 }
 
 /* Perform a DFS walk on predecessor edges to mark the region denoted
-   by the EXIT edge and DOM which dominates EXIT->src, including DOM.
+   by the EXIT_SRC block and DOM which dominates EXIT_SRC, including DOM.
    Blocks in the region are marked with FLAG and added to BBS.  BBS is
    filled up to its capacity only after which the walk is terminated
    and false is returned.  If the whole region was marked, true is returned.  */
 
 static bool
-dfs_mark_dominating_region (edge exit, basic_block dom, int flag,
+dfs_mark_dominating_region (basic_block exit_src, basic_block dom, int flag,
 			    vec<basic_block> &bbs)
 {
-  if (exit->src == dom || exit->src->flags & flag)
+  if (exit_src == dom || exit_src->flags & flag)
     return true;
   if (!bbs.space (1))
     return false;
-  bbs.quick_push (exit->src);
-  exit->src->flags |= flag;
+  bbs.quick_push (exit_src);
+  exit_src->flags |= flag;
   auto_vec<edge_iterator, 20> stack (bbs.allocated () - bbs.length () + 1);
-  stack.quick_push (ei_start (exit->src->preds));
+  stack.quick_push (ei_start (exit_src->preds));
   while (!stack.is_empty ())
     {
       /* Look at the edge on the top of the stack.  */
@@ -1060,9 +1064,12 @@ compute_control_dep_chain_pdom (basic_block cd_bb, const_basic_block dep_bb,
 	 gcc.dg/unninit-pred-12.c and PR106754.  */
       if (single_pred_p (cd_bb))
 	{
-	  edge e2 = find_edge (prev_cd_bb, cd_bb);
-	  gcc_assert (e2);
-	  cur_cd_chain.safe_push (e2);
+	  edge e2 = single_pred_edge (cd_bb);
+	  gcc_assert (e2->src == prev_cd_bb);
+	  /* But avoid adding fallthru or abnormal edges.  */
+	  if (!(e2->flags & (EDGE_FAKE | EDGE_ABNORMAL | EDGE_DFS_BACK))
+	      && !single_succ_p (prev_cd_bb))
+	    cur_cd_chain.safe_push (e2);
 	}
     }
   return found_cd_chain;
@@ -1960,6 +1967,10 @@ uninit_analysis::init_use_preds (predicate &use_preds, basic_block def_bb,
     }
   while (1);
 
+  auto_bb_flag in_region (cfun);
+  auto_vec<basic_block, 20> region (MIN (n_basic_blocks_for_fn (cfun),
+					 param_uninit_control_dep_attempts));
+
   /* Set DEP_CHAINS to the set of edges between CD_ROOT and USE_BB.
      Each DEP_CHAINS element is a series of edges whose conditions
      are logical conjunctions.  Together, the DEP_CHAINS vector is
@@ -1967,7 +1978,9 @@ uninit_analysis::init_use_preds (predicate &use_preds, basic_block def_bb,
   unsigned num_chains = 0;
   auto_vec<edge> dep_chains[MAX_NUM_CHAINS];
 
-  if (!compute_control_dep_chain (cd_root, use_bb, dep_chains, &num_chains))
+  if (!dfs_mark_dominating_region (use_bb, cd_root, in_region, region)
+      || !compute_control_dep_chain (cd_root, use_bb, dep_chains, &num_chains,
+				     in_region))
     {
       /* If the info in dep_chains is not complete we need to use a
 	 conservative approximation for the use predicate.  */
@@ -1978,6 +1991,10 @@ uninit_analysis::init_use_preds (predicate &use_preds, basic_block def_bb,
       dep_chains[0].truncate (0);
       simple_control_dep_chain (dep_chains[0], cd_root, use_bb);
     }
+
+  /* Unmark the region.  */
+  for (auto bb : region)
+    bb->flags &= ~in_region;
 
   /* From the set of edges computed above initialize *THIS as the OR
      condition under which the definition in DEF_BB is used in USE_BB.
@@ -2061,7 +2078,8 @@ uninit_analysis::init_from_phi_def (gphi *phi)
 	}
     }
   for (unsigned i = 0; i < nedges; i++)
-    if (!dfs_mark_dominating_region (def_edges[i], cd_root, in_region, region))
+    if (!dfs_mark_dominating_region (def_edges[i]->src, cd_root,
+				     in_region, region))
       break;
 
   unsigned num_chains = 0;
