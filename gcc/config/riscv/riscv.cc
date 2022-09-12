@@ -58,6 +58,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-pass.h"
 #include "opts.h"
 #include "tm-constrs.h"
+#include "rtl-iter.h"
 
 /* True if X is an UNSPEC wrapper around a SYMBOL_REF or LABEL_REF.  */
 #define UNSPEC_ADDRESS_P(X)					\
