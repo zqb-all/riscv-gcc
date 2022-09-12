@@ -57,6 +57,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "predict.h"
 #include "tree-pass.h"
 #include "opts.h"
+#include "tm-constrs.h"
 
 /* True if X is an UNSPEC wrapper around a SYMBOL_REF or LABEL_REF.  */
 #define UNSPEC_ADDRESS_P(X)					\
@@ -1684,12 +1685,300 @@ riscv_legitimize_const_move (machine_mode mode, rtx dest, rtx src)
   riscv_emit_move (dest, src);
 }
 
+/* Report when we try to do something that requires vector when vector is
+   disabled. This is an error of last resort and isn't very high-quality.  It
+   usually involves attempts to measure the vector length in some way.  */
+
+static void
+riscv_report_v_required (void)
+{
+  static bool reported_p = false;
+
+  /* Avoid reporting a slew of messages for a single oversight.  */
+  if (reported_p)
+    return;
+
+  error ("this operation requires the RVV ISA extension");
+  inform (input_location, "you can enable RVV using the command-line"
+			  " option %<-march%>, or by using the %<target%>"
+			  " attribute or pragma");
+  reported_p = true;
+}
+
+/* Note: tmp register holds the vlenb or 1/2 vlenb or 1/4 vlenb or 1/8 vlenb. */
+/* Expand move for quotient.  */
+
+static void
+riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
+{
+  if (quotient == 0)
+    {
+      riscv_emit_move (dest, GEN_INT (0));
+      return;
+    }
+
+  bool is_neg = quotient < 0;
+  quotient = abs (quotient);
+  int log2 = exact_log2 (quotient);
+
+  if (quotient == 1)
+    {
+      if (is_neg)
+	{
+	  if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+	    emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, tmp)));
+	  else
+	    {
+	      /* Handle (const_poly_int:DI [m, n]) in RV32 system. */
+	      /* We should use SImode to simulate DImode negation. */
+	      /* prologue and epilogue can not go through this condition. */
+	      gcc_assert (can_create_pseudo_p ());
+	      gcc_assert (
+		known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
+	      rtx result = expand_simple_unop (mode, NEG, tmp, NULL_RTX, false);
+	      riscv_emit_move (dest, result);
+	    }
+	}
+      else
+	riscv_emit_move (dest, tmp);
+    }
+  else if (pow2p_hwi (quotient)
+	   && known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+    {
+      gcc_assert (IN_RANGE (log2, 0, 31));
+
+      if (is_neg)
+	{
+	  emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, tmp)));
+	  emit_insn (
+	    gen_rtx_SET (dest, gen_rtx_ASHIFT (mode, dest, GEN_INT (log2))));
+	}
+      else
+	emit_insn (
+	  gen_rtx_SET (dest, gen_rtx_ASHIFT (mode, tmp, GEN_INT (log2))));
+    }
+  else if (pow2p_hwi (quotient + 1)
+	   && known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+    {
+      gcc_assert (IN_RANGE (exact_log2 (quotient + 1), 0, 31));
+      emit_insn (gen_rtx_SET (
+	dest, gen_rtx_ASHIFT (mode, tmp, GEN_INT (exact_log2 (quotient + 1)))));
+
+      if (is_neg)
+	emit_insn (gen_rtx_SET (dest, gen_rtx_MINUS (mode, tmp, dest)));
+      else
+	emit_insn (gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, tmp)));
+    }
+  else if (pow2p_hwi (quotient - 1)
+	   && known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+    {
+      gcc_assert (IN_RANGE (exact_log2 (quotient - 1), 0, 31));
+      emit_insn (gen_rtx_SET (
+	dest, gen_rtx_ASHIFT (mode, tmp, GEN_INT (exact_log2 (quotient - 1)))));
+
+      if (is_neg)
+	{
+	  emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, dest)));
+	  emit_insn (gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, tmp)));
+	}
+      else
+	emit_insn (gen_rtx_SET (dest, gen_rtx_PLUS (mode, dest, tmp)));
+    }
+  else
+    {
+      gcc_assert (TARGET_MUL
+		  && "M-extension must be enabled to calculate the poly_int "
+		     "size/offset.");
+
+      if (is_neg)
+	riscv_emit_move (dest, GEN_INT (-quotient));
+      else
+	riscv_emit_move (dest, GEN_INT (quotient));
+
+      if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+	emit_insn (gen_rtx_SET (dest, gen_rtx_MULT (mode, dest, tmp)));
+      else
+	{
+	  /* Handle (const_poly_int:DI [m, n]) in RV32 system. */
+	  /* We should use SImode to simulate DImode multiplication. */
+	  /* prologue and epilogue can not go through this condition. */
+	  gcc_assert (can_create_pseudo_p ());
+	  gcc_assert (known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
+	  rtx result = expand_simple_binop (mode, MULT, dest, tmp, NULL_RTX,
+					    false, OPTAB_DIRECT);
+	  riscv_emit_move (dest, result);
+	}
+    }
+}
+
+/* Analyze src and emit const_poly_int mov sequence.  */
+
+void
+riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
+{
+  poly_int64 value = rtx_to_poly_int64 (src);
+  int offset = value.coeffs[0];
+  int factor = value.coeffs[1];
+  int vlenb = BYTES_PER_RISCV_VECTOR.coeffs[1];
+  int div_factor = 0;
+
+  /* Calculate (const_poly_int:MODE [m, n]) using scalar instructions.
+     For any (const_poly_int:MODE [m, n]), the calculation formula is as
+     follows.
+
+     constant = m - n.
+
+     When minimum VLEN = 32, poly of VLENB = (4, 4).
+     base = vlenb(4, 4) or vlenb/2(2, 2) or vlenb/4(1, 1).
+
+     When minimum VLEN > 32, poly of VLENb = (8, 8).
+     base = vlenb(8, 8) or vlenb/2(4, 4) or vlenb/4(2, 2) or vlenb/8(1, 1).
+
+     magn = (n, n) / base.
+
+     (m, n) = base * magn + constant.
+
+     This calculation doesn't need div operation.  */
+
+  if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+    emit_insn (gen_rtx_SET (tmp, gen_int_mode (BYTES_PER_RISCV_VECTOR, mode)));
+  else
+    {
+      riscv_emit_move (gen_highpart (Pmode, tmp), GEN_INT (0));
+      emit_insn (gen_rtx_SET (gen_lowpart (Pmode, tmp),
+			      gen_int_mode (BYTES_PER_RISCV_VECTOR, Pmode)));
+    }
+
+  if (BYTES_PER_RISCV_VECTOR.is_constant ())
+    {
+      gcc_assert (value.is_constant ());
+      riscv_emit_move (dest, GEN_INT (value.to_constant ()));
+      return;
+    }
+  else if ((factor % vlenb) == 0)
+    div_factor = 1;
+  else if ((factor % (vlenb / 2)) == 0)
+    div_factor = 2;
+  else if ((factor % (vlenb / 4)) == 0)
+    div_factor = 4;
+  else if ((factor % (vlenb / 8)) == 0)
+    div_factor = 8;
+  else
+    gcc_unreachable ();
+
+  if (div_factor != 1)
+    {
+      if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+	emit_insn (
+	  gen_rtx_SET (tmp,
+		       gen_rtx_LSHIFTRT (mode, tmp,
+					 GEN_INT (exact_log2 (div_factor)))));
+      else
+	{
+	  /* Handle (const_poly_int:DI [m, n]) in RV32 system. */
+	  /* We should use SImode to simulate DImode shift. */
+	  /* prologue and epilogue can not go through this condition. */
+	  gcc_assert (can_create_pseudo_p ());
+	  gcc_assert (known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
+	  rtx result = expand_simple_binop (mode, LSHIFTRT, tmp,
+					    GEN_INT (exact_log2 (div_factor)),
+					    NULL_RTX, false, OPTAB_DIRECT);
+	  riscv_emit_move (tmp, result);
+	}
+    }
+
+  riscv_expand_quotient (factor / (vlenb / div_factor), mode, tmp, dest);
+  HOST_WIDE_INT constant = offset - factor;
+
+  if (constant == 0)
+    return;
+  else if (SMALL_OPERAND (constant))
+    {
+      if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+	emit_insn (
+	  gen_rtx_SET (dest, gen_rtx_PLUS (mode, dest, GEN_INT (constant))));
+      else
+	{
+	  /* Handle (const_poly_int:DI [m, n]) in RV32 system. */
+	  /* We should use SImode to simulate DImode addition. */
+	  /* prologue and epilogue can not go through this condition. */
+	  gcc_assert (can_create_pseudo_p ());
+	  gcc_assert (known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
+	  rtx result
+	    = expand_simple_binop (mode, PLUS, dest, GEN_INT (constant),
+				   NULL_RTX, false, OPTAB_DIRECT);
+	  riscv_emit_move (dest, result);
+	}
+    }
+  else
+    {
+      if (known_eq (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+	{
+	  rtx high;
+
+	  /* Leave OFFSET as a 16-bit offset and put the excess in HIGH.
+	     The addition inside the macro CONST_HIGH_PART may cause an
+	     overflow, so we need to force a sign-extension check.  */
+	  high = gen_int_mode (CONST_HIGH_PART (constant), Pmode);
+	  constant = CONST_LOW_PART (constant);
+	  riscv_emit_move (tmp, high);
+	  riscv_emit_move (dest, gen_rtx_PLUS (Pmode, tmp, dest));
+	  riscv_emit_move (dest, plus_constant (Pmode, dest, constant));
+	}
+      else
+	{
+	  /* Handle (const_poly_int:DI [m, n]) in RV32 system. */
+	  /* We should use SImode to simulate DImode addition. */
+	  /* prologue and epilogue can not go through this condition. */
+	  gcc_assert (can_create_pseudo_p ());
+	  gcc_assert (known_gt (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)));
+	  rtx result
+	    = expand_simple_binop (mode, PLUS, dest, GEN_INT (constant),
+				   NULL_RTX, false, OPTAB_DIRECT);
+	  riscv_emit_move (dest, result);
+	}
+    }
+}
+
 /* If (set DEST SRC) is not a valid move instruction, emit an equivalent
    sequence that is valid.  */
 
 bool
 riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
 {
+  if (CONST_POLY_INT_P (src))
+    {
+      poly_int64 value = rtx_to_poly_int64 (src);
+      if (!value.is_constant () && !TARGET_VECTOR)
+	{
+	  riscv_report_v_required ();
+	  return false;
+	}
+
+      if (satisfies_constraint_vp (src))
+	return false;
+
+      if (GET_MODE_SIZE (mode).to_constant () < GET_MODE_SIZE (Pmode))
+	{
+	  /* In RV32 system, handle (const_poly_int:QI [m, n])
+				    (const_poly_int:HI [m, n]).
+	     In RV64 system, handle (const_poly_int:QI [m, n])
+				    (const_poly_int:HI [m, n])
+				    (const_poly_int:SI [m, n]).  */
+	  rtx tmp = gen_reg_rtx (Pmode);
+	  riscv_legitimize_poly_move (Pmode, gen_lowpart (Pmode, dest), tmp,
+				      src);
+	}
+      else
+	{
+	  /* In RV32 system, handle (const_poly_int:SI [m, n])
+				    (const_poly_int:DI [m, n]).
+	     In RV64 system, handle (const_poly_int:DI [m, n]).  */
+	  rtx tmp = gen_reg_rtx (mode);
+	  riscv_legitimize_poly_move (mode, dest, tmp, src);
+	}
+      return true;
+    }
   /* Expand 
        (set (reg:QI target) (mem:QI (address))) 
      to
@@ -5033,6 +5322,9 @@ riscv_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
       if (!riscv_v_ext_vector_mode_p (mode))
 	return false;
 
+      if (!V_REG_P (regno + nregs - 1))
+	return false;
+
       /* 3.3.2. LMUL = 2,4,8, register numbers should be multiple of 2,4,8.
 	 but for mask vector register, register numbers can be any number. */
       int lmul = 1;
@@ -5041,6 +5333,8 @@ riscv_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
       if (lmul != 1)
 	return ((regno % lmul) == 0);
     }
+  else if (regno == VL_REGNUM || regno == VTYPE_REGNUM)
+    return true;
   else
     return false;
 
@@ -5231,10 +5525,6 @@ riscv_init_machine_status (void)
 static poly_uint16
 riscv_convert_vector_bits (void)
 {
-  /* The runtime invariant is only meaningful when TARGET_VECTOR is enabled. */
-  if (!TARGET_VECTOR)
-    return 0;
-
   if (TARGET_MIN_VLEN > 32)
     {
       /* When targetting minimum VLEN > 32, we should use 64-bit chunk size.
@@ -5255,7 +5545,13 @@ riscv_convert_vector_bits (void)
       riscv_bytes_per_vector_chunk = 4;
     }
 
-  return poly_uint16 (1, 1);
+  /* Set riscv_vector_chunks as poly (1, 1) run-time constant if TARGET_VECTOR
+     is enabled. Set riscv_vector_chunks as 1 compile-time constant if
+     TARGET_VECTOR is disabled. riscv_vector_chunks is used in "riscv-modes.def"
+     to set RVV mode size. The RVV machine modes size are run-time constant if
+     TARGET_VECTOR is enabled. The RVV machine modes size remains default
+     compile-time constant if TARGET_VECTOR is disabled.  */
+  return TARGET_VECTOR ? poly_uint16 (1, 1) : 1;
 }
 
 /* Implement TARGET_OPTION_OVERRIDE.  */
@@ -6001,6 +6297,31 @@ riscv_init_libfuncs (void)
   set_optab_libfunc (gt_optab, HFmode, NULL);
   set_optab_libfunc (unord_optab, HFmode, NULL);
 }
+
+void
+riscv_reinit (void)
+{
+  riscv_option_override ();
+  init_adjust_machine_modes ();
+  init_derived_machine_modes ();
+  reinit_regs ();
+}
+
+#if CHECKING_P
+namespace selftest {
+/* Run all target-specific selftests.  */
+static void
+riscv_run_selftests (void)
+{
+  run_poly_int_selftests ();
+}
+} // namespace selftest
+#endif /* #if CHECKING_P */
+
+#if CHECKING_P
+#undef TARGET_RUN_TARGET_SELFTESTS
+#define TARGET_RUN_TARGET_SELFTESTS selftest::riscv_run_selftests
+#endif /* #if CHECKING_P */
 
 /* Initialize the GCC target structure.  */
 #undef TARGET_ASM_ALIGNED_HI_OP
