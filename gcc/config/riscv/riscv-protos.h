@@ -108,6 +108,10 @@ struct riscv_cpu_info {
 extern const riscv_cpu_info *riscv_find_cpu (const char *);
 
 /* Routines implemented in riscv-selftests.cc.  */
-extern void run_poly_int_selftests (void);
+#if CHECKING_P
+namespace selftest {
+extern void riscv_run_selftests (void);
+} // namespace selftest
+#endif
 
 #endif /* ! GCC_RISCV_PROTOS_H */
