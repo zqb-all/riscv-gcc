@@ -1775,7 +1775,7 @@ riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
 	      || pow2p_hwi (multiplier - 1))
 	    emit_insn (
 	      gen_rtx_SET (dest, gen_rtx_ASHIFT (mode, multiplicand,
-						 gen_int_mode (log2, Pmode))));
+						 gen_int_mode (log2, QImode))));
 	  if (pow2p_hwi (multiplier))
 	    {
 	      /*
@@ -1893,7 +1893,7 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
 
   if (div_factor != 1)
     riscv_expand_op (LSHIFTRT, mode, tmp, tmp,
-		     gen_int_mode (exact_log2 (div_factor), Pmode));
+		     gen_int_mode (exact_log2 (div_factor), QImode));
 
   riscv_expand_mult_with_const_int (mode, dest, tmp, factor / (vlenb / div_factor));
   HOST_WIDE_INT constant = offset - factor;
