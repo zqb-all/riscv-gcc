@@ -1756,13 +1756,13 @@ riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
       return;
     }
 
-  bool is_neg = multiplier < 0;
+  bool neg_p = multiplier < 0;
   int multiplier_abs = abs (multiplier);
   int log2 = exact_log2 (multiplier_abs);
 
   if (multiplier_abs == 1)
     {
-      if (is_neg)
+      if (neg_p)
 	riscv_expand_op (NEG, mode, dest, multiplicand, NULL_RTX);
       else
 	riscv_emit_move (dest, multiplicand);
@@ -1790,7 +1790,7 @@ riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
 			slli a5, a5, 3
 			neg a5, a5
 	      */
-	      if (is_neg)
+	      if (neg_p)
 		emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, dest)));
 	      return;
 	    }
@@ -1810,7 +1810,7 @@ riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
 			slli a4, a5, 3
 			sub a5, a4, a5 + neg a5, a5 => sub a5, a5, a4
 	      */
-	      if (is_neg)
+	      if (neg_p)
 		emit_insn (
 		  gen_rtx_SET (dest, gen_rtx_MINUS (mode, multiplicand, dest)));
 	      else
@@ -1837,7 +1837,7 @@ riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
 	      */
 	      emit_insn (
 		gen_rtx_SET (dest, gen_rtx_PLUS (mode, dest, multiplicand)));
-	      if (is_neg)
+	      if (neg_p)
 		emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, dest)));
 	      return;
 	    }
