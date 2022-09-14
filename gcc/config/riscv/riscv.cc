@@ -1901,7 +1901,7 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
   if (constant == 0)
     return;
   else if (SMALL_OPERAND (constant))
-    riscv_expand_op (PLUS, mode, dest, dest, gen_int_mode (constant, Pmode));
+    riscv_expand_op (PLUS, mode, dest, dest, gen_int_mode (constant, mode));
   else
     {
       /* Handle the constant value is not a 12-bit value.  */
@@ -1910,11 +1910,11 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
       /* Leave OFFSET as a 16-bit offset and put the excess in HIGH.
 	 The addition inside the macro CONST_HIGH_PART may cause an
 	 overflow, so we need to force a sign-extension check.  */
-      high = gen_int_mode (CONST_HIGH_PART (constant), Pmode);
+      high = gen_int_mode (CONST_HIGH_PART (constant), mode);
       constant = CONST_LOW_PART (constant);
       riscv_emit_move (tmp, high);
       riscv_expand_op (PLUS, mode, dest, tmp, dest);
-      riscv_expand_op (PLUS, mode, dest, dest, gen_int_mode (constant, Pmode));
+      riscv_expand_op (PLUS, mode, dest, dest, gen_int_mode (constant, mode));
     }
 }
 
