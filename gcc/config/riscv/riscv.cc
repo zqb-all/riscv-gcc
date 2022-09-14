@@ -1811,9 +1811,11 @@ riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
 			sub a5, a4, a5 + neg a5, a5 => sub a5, a5, a4
 	      */
 	      if (is_neg)
-		std::swap (multiplicand, dest);
-	      emit_insn (
-		gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, multiplicand)));
+		emit_insn (
+		  gen_rtx_SET (dest, gen_rtx_MINUS (mode, multiplicand, dest)));
+	      else
+		emit_insn (
+		  gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, multiplicand)));
 	      return;
 	    }
 
