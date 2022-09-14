@@ -1712,22 +1712,142 @@ riscv_report_v_required (void)
   reported_p = true;
 }
 
-/* Note: tmp register holds the vlenb or 1/2 vlenb or 1/4 vlenb or 1/8 vlenb. */
-/* Expand move for quotient.  */
+/* Helper function to operation for rtx_code CODE.  */
+static void
+riscv_expand_op (enum rtx_code code, machine_mode mode, rtx op0, rtx op1,
+		 rtx op2)
+{
+  if (can_create_pseudo_p ())
+    {
+      rtx result;
+
+      if (GET_RTX_CLASS (code) == RTX_UNARY)
+	result = expand_simple_unop (mode, code, op1, NULL_RTX, false);
+      else
+	result = expand_simple_binop (mode, code, op1, op2, NULL_RTX, false,
+				      OPTAB_DIRECT);
+
+      riscv_emit_move (op0, result);
+    }
+  else
+    {
+      rtx pat;
+      /* The following implementation is for prologue and epilogue.
+	 Because prologue and epilogue can not use pseudo register.
+	 We can't using expand_simple_binop or expand_simple_unop.  */
+      if (GET_RTX_CLASS (code) == RTX_UNARY)
+	pat = gen_rtx_fmt_e (code, mode, op1);
+      else
+	pat = gen_rtx_fmt_ee (code, mode, op1, op2);
+      emit_insn (gen_rtx_SET (op0, pat));
+    }
+}
+
+/* Note: tmp register holds the vlenb or 1/2 vlenb or 1/4 vlenb or 1/8 vlenb.  */
+/* Expand mult operation with constant integer, multiplicand also used as a temporary register.  */
 
 static void
-riscv_expand_quotient (int quotient, machine_mode mode, rtx tmp, rtx dest)
+riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
+				  int multiplier)
 {
-  if (quotient == 0)
+  if (multiplier == 0)
     {
       riscv_emit_move (dest, GEN_INT (0));
       return;
     }
 
-  gcc_assert (can_create_pseudo_p ());
-  rtx result = expand_simple_binop (mode, MULT, tmp, GEN_INT (quotient),
-				    NULL_RTX, false, OPTAB_DIRECT);
-  riscv_emit_move (dest, result);
+  bool is_neg = multiplier < 0;
+  int multiplier_abs = abs (multiplier);
+  int log2 = exact_log2 (multiplier_abs);
+
+  if (multiplier_abs == 1)
+    {
+      if (is_neg)
+	riscv_expand_op (NEG, mode, dest, multiplicand, NULL_RTX);
+      else
+	riscv_emit_move (dest, multiplicand);
+    }
+  else
+    {
+      if (mode == Pmode)
+	{
+	  if (pow2p_hwi (multiplier) || pow2p_hwi (multiplier + 1)
+	      || pow2p_hwi (multiplier - 1))
+	    emit_insn (
+	      gen_rtx_SET (dest, gen_rtx_ASHIFT (mode, multiplicand,
+						 gen_int_mode (log2, Pmode))));
+	  if (pow2p_hwi (multiplier))
+	    {
+	      /*
+		multiplicand = [BYTES_PER_RISCV_VECTOR].
+		 1. const_poly_int:P [BYTES_PER_RISCV_VECTOR * 8].
+		Sequence:
+			csrr a5, vlenb
+			slli a5, a5, 3
+		2. const_poly_int:P [-BYTES_PER_RISCV_VECTOR * 8].
+		Sequence:
+			csrr a5, vlenb
+			slli a5, a5, 3
+			neg a5, a5
+	      */
+	      if (is_neg)
+		emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, dest)));
+	      return;
+	    }
+
+	  if (pow2p_hwi (multiplier + 1))
+	    {
+	      /*
+		multiplicand = [BYTES_PER_RISCV_VECTOR].
+		 1. const_poly_int:P [BYTES_PER_RISCV_VECTOR * 7].
+		Sequence:
+			csrr a5, vlenb
+			slli a4, a5, 3
+			sub a5, a4, a5
+		 2. const_poly_int:P [-BYTES_PER_RISCV_VECTOR * 7].
+		Sequence:
+			csrr a5, vlenb
+			slli a4, a5, 3
+			sub a5, a4, a5 + neg a5, a5 => sub a5, a5, a4
+	      */
+	      if (is_neg)
+		std::swap (multiplicand, dest);
+	      emit_insn (
+		gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, multiplicand)));
+	      return;
+	    }
+
+	  if (pow2p_hwi (multiplier - 1))
+	    {
+	      /*
+		multiplicand = [BYTES_PER_RISCV_VECTOR].
+		 1. const_poly_int:P [BYTES_PER_RISCV_VECTOR * 9].
+		Sequence:
+			csrr a5, vlenb
+			slli a4, a5, 3
+			add a5, a4, a5
+		 2. const_poly_int:P [-BYTES_PER_RISCV_VECTOR * 9].
+		Sequence:
+			csrr a5, vlenb
+			slli a4, a5, 3
+			add a5, a4, a5
+			neg a5, a5
+	      */
+	      emit_insn (
+		gen_rtx_SET (dest, gen_rtx_PLUS (mode, dest, multiplicand)));
+	      if (is_neg)
+		emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, dest)));
+	      return;
+	    }
+	}
+
+      /* We use multiplication for remaining cases.  */
+      gcc_assert (TARGET_MUL
+		  && "M-extension must be enabled to calculate the poly_int "
+		     "size/offset.");
+      riscv_emit_move (dest, gen_int_mode (multiplier, Pmode));
+      riscv_expand_op (MULT, mode, dest, dest, multiplicand);
+    }
 }
 
 /* Analyze src and emit const_poly_int mov sequence.  */
@@ -1740,23 +1860,16 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
   int factor = value.coeffs[1];
   int vlenb = BYTES_PER_RISCV_VECTOR.coeffs[1];
   int div_factor = 0;
-
   /* Calculate (const_poly_int:MODE [m, n]) using scalar instructions.
      For any (const_poly_int:MODE [m, n]), the calculation formula is as
      follows.
-
      constant = m - n.
-
      When minimum VLEN = 32, poly of VLENB = (4, 4).
      base = vlenb(4, 4) or vlenb/2(2, 2) or vlenb/4(1, 1).
-
      When minimum VLEN > 32, poly of VLENb = (8, 8).
      base = vlenb(8, 8) or vlenb/2(4, 4) or vlenb/4(2, 2) or vlenb/8(1, 1).
-
      magn = (n, n) / base.
-
      (m, n) = base * magn + constant.
-
      This calculation doesn't need div operation.  */
 
   emit_move_insn (tmp, gen_int_mode (BYTES_PER_RISCV_VECTOR, mode));
@@ -1779,26 +1892,29 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
     gcc_unreachable ();
 
   if (div_factor != 1)
-    {
-      gcc_assert (can_create_pseudo_p ());
-      rtx result = expand_simple_binop (mode, LSHIFTRT, tmp,
-					GEN_INT (exact_log2 (div_factor)),
-					NULL_RTX, false, OPTAB_DIRECT);
-      riscv_emit_move (tmp, result);
-    }
+    riscv_expand_op (LSHIFTRT, mode, tmp, tmp,
+		     gen_int_mode (exact_log2 (div_factor), Pmode));
 
-  riscv_expand_quotient (factor / (vlenb / div_factor), mode, tmp, dest);
+  riscv_expand_mult_with_const_int (mode, dest, tmp, factor / (vlenb / div_factor));
   HOST_WIDE_INT constant = offset - factor;
 
   if (constant == 0)
     return;
+  else if (SMALL_OPERAND (constant))
+    riscv_expand_op (PLUS, mode, dest, dest, gen_int_mode (constant, Pmode));
   else
     {
-      /* prologue and epilogue can not go through this condition. */
-      gcc_assert (can_create_pseudo_p ());
-      rtx result = expand_simple_binop (mode, PLUS, dest, GEN_INT (constant),
-					NULL_RTX, false, OPTAB_DIRECT);
-      riscv_emit_move (dest, result);
+      /* Handle the constant value is not a 12-bit value.  */
+      rtx high;
+
+      /* Leave OFFSET as a 16-bit offset and put the excess in HIGH.
+	 The addition inside the macro CONST_HIGH_PART may cause an
+	 overflow, so we need to force a sign-extension check.  */
+      high = gen_int_mode (CONST_HIGH_PART (constant), Pmode);
+      constant = CONST_LOW_PART (constant);
+      riscv_emit_move (tmp, high);
+      riscv_expand_op (PLUS, mode, dest, tmp, dest);
+      riscv_expand_op (PLUS, mode, dest, dest, gen_int_mode (constant, Pmode));
     }
 }
 

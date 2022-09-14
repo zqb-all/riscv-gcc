@@ -188,7 +188,12 @@ run_poly_int_selftests (void)
 {
   std::vector<poly_int64> worklist
     = {BYTES_PER_RISCV_VECTOR,	    BYTES_PER_RISCV_VECTOR * 8,
-       BYTES_PER_RISCV_VECTOR * 32, poly_int64 (207, 0),
+       BYTES_PER_RISCV_VECTOR * 32, -BYTES_PER_RISCV_VECTOR * 8,
+       -BYTES_PER_RISCV_VECTOR * 32, BYTES_PER_RISCV_VECTOR * 7,
+       BYTES_PER_RISCV_VECTOR * 31, -BYTES_PER_RISCV_VECTOR * 7,
+       -BYTES_PER_RISCV_VECTOR * 31, BYTES_PER_RISCV_VECTOR * 9,
+       BYTES_PER_RISCV_VECTOR * 33, -BYTES_PER_RISCV_VECTOR * 9,
+       -BYTES_PER_RISCV_VECTOR * 33, poly_int64 (207, 0),
        poly_int64 (-207, 0),	    poly_int64 (0, 207),
        poly_int64 (0, -207),	    poly_int64 (5555, 0),
        poly_int64 (0, 5555),	    poly_int64 (4096, 4096),
