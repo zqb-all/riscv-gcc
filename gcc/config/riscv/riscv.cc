@@ -1741,8 +1741,8 @@ riscv_expand_op (enum rtx_code code, machine_mode mode, rtx op0, rtx op1,
     }
 }
 
-/* Note: tmp register holds the vlenb or 1/2 vlenb or 1/4 vlenb or 1/8 vlenb.  */
-/* Expand mult operation with constant integer, multiplicand also used as a temporary register.  */
+/* Expand mult operation with constant integer, multiplicand also used as a
+ * temporary register.  */
 
 static void
 riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
@@ -1860,7 +1860,7 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
      constant = m - n.
      When minimum VLEN = 32, poly of VLENB = (4, 4).
      base = vlenb(4, 4) or vlenb/2(2, 2) or vlenb/4(1, 1).
-     When minimum VLEN > 32, poly of VLENb = (8, 8).
+     When minimum VLEN > 32, poly of VLENB = (8, 8).
      base = vlenb(8, 8) or vlenb/2(4, 4) or vlenb/4(2, 2) or vlenb/8(1, 1).
      magn = (n, n) / base.
      (m, n) = base * magn + constant.
@@ -1889,7 +1889,8 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
     riscv_expand_op (LSHIFTRT, mode, tmp, tmp,
 		     gen_int_mode (exact_log2 (div_factor), QImode));
 
-  riscv_expand_mult_with_const_int (mode, dest, tmp, factor / (vlenb / div_factor));
+  riscv_expand_mult_with_const_int (mode, dest, tmp,
+				    factor / (vlenb / div_factor));
   HOST_WIDE_INT constant = offset - factor;
 
   if (constant == 0)
@@ -1945,14 +1946,16 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
 	{
 	  /* In RV32 system, handle (const_poly_int:SI [m, n])
 				    (const_poly_int:DI [m, n]).
-	     In RV64 system, handle (const_poly_int:DI [m, n]).  */
+	     In RV64 system, handle (const_poly_int:DI [m, n]).
+       FIXME: Maybe we could gen SImode in RV32 and then sign-extend to DImode,
+       the offset should not exceed 4GiB in general.  */
 	  rtx tmp = gen_reg_rtx (mode);
 	  riscv_legitimize_poly_move (mode, dest, tmp, src);
 	}
       return true;
     }
-  /* Expand
-       (set (reg:QI target) (mem:QI (address)))
+  /* Expand 
+       (set (reg:QI target) (mem:QI (address))) 
      to
        (set (reg:DI temp) (zero_extend:DI (mem:QI (address))))
        (set (reg:QI target) (subreg:QI (reg:DI temp) 0))
@@ -1967,8 +1970,8 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
 
       temp_reg = gen_reg_rtx (word_mode);
       zero_extend_p = (LOAD_EXTEND_OP (mode) == ZERO_EXTEND);
-      emit_insn (
-	gen_extend_insn (temp_reg, src, word_mode, mode, zero_extend_p));
+      emit_insn (gen_extend_insn (temp_reg, src, word_mode, mode, 
+				  zero_extend_p));
       riscv_emit_move (dest, gen_lowpart (mode, temp_reg));
       return true;
     }
