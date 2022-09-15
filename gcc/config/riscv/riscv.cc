@@ -1720,13 +1720,11 @@ riscv_expand_op (enum rtx_code code, machine_mode mode, rtx op0, rtx op1,
   if (can_create_pseudo_p ())
     {
       rtx result;
-
       if (GET_RTX_CLASS (code) == RTX_UNARY)
 	result = expand_simple_unop (mode, code, op1, NULL_RTX, false);
       else
 	result = expand_simple_binop (mode, code, op1, op2, NULL_RTX, false,
 				      OPTAB_DIRECT);
-
       riscv_emit_move (op0, result);
     }
   else
@@ -1758,7 +1756,6 @@ riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
 
   bool neg_p = multiplier < 0;
   int multiplier_abs = abs (multiplier);
-  int log2 = exact_log2 (multiplier_abs);
 
   if (multiplier_abs == 1)
     {
@@ -1769,86 +1766,81 @@ riscv_expand_mult_with_const_int (machine_mode mode, rtx dest, rtx multiplicand,
     }
   else
     {
-      if (mode == Pmode)
+      if (pow2p_hwi (multiplier_abs))
 	{
-	  if (pow2p_hwi (multiplier) || pow2p_hwi (multiplier + 1)
-	      || pow2p_hwi (multiplier - 1))
-	    emit_insn (
-	      gen_rtx_SET (dest, gen_rtx_ASHIFT (mode, multiplicand,
-						 gen_int_mode (log2, QImode))));
-	  if (pow2p_hwi (multiplier))
-	    {
-	      /*
-		multiplicand = [BYTES_PER_RISCV_VECTOR].
-		 1. const_poly_int:P [BYTES_PER_RISCV_VECTOR * 8].
-		Sequence:
-			csrr a5, vlenb
-			slli a5, a5, 3
-		2. const_poly_int:P [-BYTES_PER_RISCV_VECTOR * 8].
-		Sequence:
-			csrr a5, vlenb
-			slli a5, a5, 3
-			neg a5, a5
-	      */
-	      if (neg_p)
-		emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, dest)));
-	      return;
-	    }
-
-	  if (pow2p_hwi (multiplier + 1))
-	    {
-	      /*
-		multiplicand = [BYTES_PER_RISCV_VECTOR].
-		 1. const_poly_int:P [BYTES_PER_RISCV_VECTOR * 7].
-		Sequence:
-			csrr a5, vlenb
-			slli a4, a5, 3
-			sub a5, a4, a5
-		 2. const_poly_int:P [-BYTES_PER_RISCV_VECTOR * 7].
-		Sequence:
-			csrr a5, vlenb
-			slli a4, a5, 3
-			sub a5, a4, a5 + neg a5, a5 => sub a5, a5, a4
-	      */
-	      if (neg_p)
-		emit_insn (
-		  gen_rtx_SET (dest, gen_rtx_MINUS (mode, multiplicand, dest)));
-	      else
-		emit_insn (
-		  gen_rtx_SET (dest, gen_rtx_MINUS (mode, dest, multiplicand)));
-	      return;
-	    }
-
-	  if (pow2p_hwi (multiplier - 1))
-	    {
-	      /*
-		multiplicand = [BYTES_PER_RISCV_VECTOR].
-		 1. const_poly_int:P [BYTES_PER_RISCV_VECTOR * 9].
-		Sequence:
-			csrr a5, vlenb
-			slli a4, a5, 3
-			add a5, a4, a5
-		 2. const_poly_int:P [-BYTES_PER_RISCV_VECTOR * 9].
-		Sequence:
-			csrr a5, vlenb
-			slli a4, a5, 3
-			add a5, a4, a5
-			neg a5, a5
-	      */
-	      emit_insn (
-		gen_rtx_SET (dest, gen_rtx_PLUS (mode, dest, multiplicand)));
-	      if (neg_p)
-		emit_insn (gen_rtx_SET (dest, gen_rtx_NEG (mode, dest)));
-	      return;
-	    }
+	  /*
+	    multiplicand = [BYTES_PER_RISCV_VECTOR].
+	     1. const_poly_int:P [BYTES_PER_RISCV_VECTOR * 8].
+	    Sequence:
+		    csrr a5, vlenb
+		    slli a5, a5, 3
+	    2. const_poly_int:P [-BYTES_PER_RISCV_VECTOR * 8].
+	    Sequence:
+		    csrr a5, vlenb
+		    slli a5, a5, 3
+		    neg a5, a5
+	  */
+	  riscv_expand_op (ASHIFT, mode, dest, multiplicand,
+			   gen_int_mode (exact_log2 (multiplier_abs), QImode));
+	  if (neg_p)
+	    riscv_expand_op (NEG, mode, dest, dest, NULL_RTX);
 	}
-
-      /* We use multiplication for remaining cases.  */
-      gcc_assert (TARGET_MUL
-		  && "M-extension must be enabled to calculate the poly_int "
-		     "size/offset.");
-      riscv_emit_move (dest, gen_int_mode (multiplier, Pmode));
-      riscv_expand_op (MULT, mode, dest, dest, multiplicand);
+      else if (pow2p_hwi (multiplier_abs + 1))
+	{
+	  /*
+	    multiplicand = [BYTES_PER_RISCV_VECTOR].
+	     1. const_poly_int:P [BYTES_PER_RISCV_VECTOR * 7].
+	    Sequence:
+		    csrr a5, vlenb
+		    slli a4, a5, 3
+		    sub a5, a4, a5
+	     2. const_poly_int:P [-BYTES_PER_RISCV_VECTOR * 7].
+	    Sequence:
+		    csrr a5, vlenb
+		    slli a4, a5, 3
+		    sub a5, a4, a5 + neg a5, a5 => sub a5, a5, a4
+	  */
+	  riscv_expand_op (ASHIFT, mode, dest, multiplicand,
+			   gen_int_mode (exact_log2 (multiplier_abs + 1),
+					 QImode));
+	  if (neg_p)
+	    riscv_expand_op (MINUS, mode, dest, multiplicand, dest);
+	  else
+	    riscv_expand_op (MINUS, mode, dest, dest, multiplicand);
+	}
+      else if (pow2p_hwi (multiplier - 1))
+	{
+	  /*
+	    multiplicand = [BYTES_PER_RISCV_VECTOR].
+	     1. const_poly_int:P [BYTES_PER_RISCV_VECTOR * 9].
+	    Sequence:
+		    csrr a5, vlenb
+		    slli a4, a5, 3
+		    add a5, a4, a5
+	     2. const_poly_int:P [-BYTES_PER_RISCV_VECTOR * 9].
+	    Sequence:
+		    csrr a5, vlenb
+		    slli a4, a5, 3
+		    add a5, a4, a5
+		    neg a5, a5
+	  */
+	  riscv_expand_op (ASHIFT, mode, dest, multiplicand,
+			   gen_int_mode (exact_log2 (multiplier_abs - 1),
+					 QImode));
+	  riscv_expand_op (PLUS, mode, dest, dest, multiplicand);
+	  if (neg_p)
+	    riscv_expand_op (NEG, mode, dest, dest, NULL_RTX);
+	}
+      else
+	{
+	  /* We use multiplication for remaining cases.  */
+	  gcc_assert (
+	    TARGET_MUL
+	    && "M-extension must be enabled to calculate the poly_int "
+	       "size/offset.");
+	  riscv_emit_move (dest, gen_int_mode (multiplier, mode));
+	  riscv_expand_op (MULT, mode, dest, dest, multiplicand);
+	}
     }
 }
 
