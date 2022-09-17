@@ -71,7 +71,8 @@ eval_value (rtx x, std::map<unsigned, rtx> &regno_to_rtx)
   unsigned regno = REGNO (x);
   expr = regno_to_rtx[regno];
 
-  poly_int64 op1_val, op2_val;
+  poly_int64 op1_val = 0;
+  poly_int64 op2_val = 0;
   if (UNARY_P (expr))
     {
       op1_val = eval_value (XEXP (expr, 0), regno_to_rtx);
