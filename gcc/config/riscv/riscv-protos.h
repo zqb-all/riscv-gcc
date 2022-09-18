@@ -114,4 +114,6 @@ extern void riscv_run_selftests (void);
 } // namespace selftest
 #endif
 
+extern tree riscv_float16_type_node;
+
 #endif /* ! GCC_RISCV_PROTOS_H */
