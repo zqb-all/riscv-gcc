@@ -19,8 +19,23 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
+/* Use "DEF_RVV_TYPE" macro to define RVV datatype builtins.
+   Take "vint32m1_t" for example, the definition macro will be as follows:
+   DEF_RVV_TYPE (vint32m1_t, 15, __rvv_int32m1_t,
+	      TARGET_64BIT ? intSI_type_node : long_integer_type_node,
+	      TARGET_MIN_VLEN == 32 ? VNx1SImode : VNx2SImode)
+   1.The first argument "vint32m1_t" is datatype exposed to users.
+   2.The second argument "15" is the length of "__rvv_int32m1_t", it is used
+     for mangled name generation.
+   3.The third argument "__rvv_int32m1_t" is associated scalar type which is
+     used in "build_vector_type_for_mode".
+	 For "vint32m1_t", we use "intSI_type_node" in RV64.
+	 Otherwise, we use "long_integer_type_node".
+   4.machine mode = VNx1SImode when TARGET_MIN_VLEN == 32.
+     Otherwise, mode = VNx2SImode when TARGET_MIN_VLEN > 32.  */
+
 #ifndef DEF_RVV_TYPE
-#define DEF_RVV_TYPE(A, B, C, D, E)
+#define DEF_RVV_TYPE(USER_NAME, ABI_NAME, NCHARS, SCALAR_TYPE, VECTOR_MODE)
 #endif
 
 /*
