@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O3 -march=rv32gc_zve32x -mabi=ilp32d" } */
+/* { dg-options "-O3 -march=rv32gc_zfh_zve32f -mabi=ilp32d" } */
 
 void foo0 () {__rvv_bool64_t t;} /* { dg-error {unknown type name '__rvv_bool64_t'} } */
 void foo1 () {__rvv_bool32_t t;}
@@ -53,16 +53,16 @@ void foo48 () {__rvv_uint64m4_t t;} /* { dg-error {unknown type name '__rvv_uint
 void foo49 () {__rvv_int64m8_t t;} /* { dg-error {unknown type name '__rvv_int64m8_t'} } */
 void foo50 () {__rvv_uint64m8_t t;} /* { dg-error {unknown type name '__rvv_uint64m8_t'} } */
 void foo51 () {__rvv_float16mf4_t t;} /* { dg-error {unknown type name '__rvv_float16mf4_t'} } */
-void foo52 () {__rvv_float16mf2_t t;} /* { dg-error {unknown type name '__rvv_float16mf2_t'} } */
-void foo53 () {__rvv_float16m1_t t;} /* { dg-error {unknown type name '__rvv_float16m1_t'} } */
-void foo54 () {__rvv_float16m2_t t;} /* { dg-error {unknown type name '__rvv_float16m2_t'} } */
-void foo55 () {__rvv_float16m4_t t;} /* { dg-error {unknown type name '__rvv_float16m4_t'} } */
-void foo56 () {__rvv_float16m8_t t;} /* { dg-error {unknown type name '__rvv_float16m8_t'} } */
+void foo52 () {__rvv_float16mf2_t t;}
+void foo53 () {__rvv_float16m1_t t;}
+void foo54 () {__rvv_float16m2_t t;}
+void foo55 () {__rvv_float16m4_t t;}
+void foo56 () {__rvv_float16m8_t t;}
 void foo57 () {__rvv_float32mf2_t t;} /* { dg-error {unknown type name '__rvv_float32mf2_t'} } */
-void foo58 () {__rvv_float32m1_t t;} /* { dg-error {unknown type name '__rvv_float32m1_t'} } */
-void foo59 () {__rvv_float32m2_t t;} /* { dg-error {unknown type name '__rvv_float32m2_t'} } */
-void foo60 () {__rvv_float32m4_t t;} /* { dg-error {unknown type name '__rvv_float32m4_t'} } */
-void foo61 () {__rvv_float32m8_t t;} /* { dg-error {unknown type name '__rvv_float32m8_t'} } */
+void foo58 () {__rvv_float32m1_t t;}
+void foo59 () {__rvv_float32m2_t t;}
+void foo60 () {__rvv_float32m4_t t;}
+void foo61 () {__rvv_float32m8_t t;}
 void foo62 () {__rvv_float64m1_t t;} /* { dg-error {unknown type name '__rvv_float64m1_t'} } */
 void foo63 () {__rvv_float64m2_t t;} /* { dg-error {unknown type name '__rvv_float64m2_t'} } */
 void foo64 () {__rvv_float64m4_t t;} /* { dg-error {unknown type name '__rvv_float64m4_t'} } */

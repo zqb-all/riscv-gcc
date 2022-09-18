@@ -27,8 +27,8 @@ along with GCC; see the file COPYING3.  If not see
    1.The first argument "vint32m1_t" is datatype exposed to users.
    2.The second argument "15" is the length of "__rvv_int32m1_t", it is used
      for mangled name generation.
-   3.The third argument "__rvv_int32m1_t" is associated scalar type which is
-     used in "build_vector_type_for_mode".
+   3.The third argument is associated scalar type which is used in 
+     "build_vector_type_for_mode".
 	 For "vint32m1_t", we use "intSI_type_node" in RV64.
 	 Otherwise, we use "long_integer_type_node".
    4.machine mode = VNx1SImode when TARGET_MIN_VLEN == 32.
@@ -307,38 +307,32 @@ DEF_RVV_TYPE (vuint64m8_t, 16, __rvv_uint64m8_t,
 	 Disable when TARGET_MIN_VLEN = 32 or !TARGET_ZFH.
 	 Machine mode = VNx1HFmode.  */
 DEF_RVV_TYPE (vfloat16mf4_t, 18, __rvv_float16mf4_t,
-	      TARGET_MIN_VLEN == 32 || !TARGET_ZFH ? NULL_TREE
-						   : riscv_float16_type_node,
-	      TARGET_MIN_VLEN == 32 || !TARGET_ZFH ? VOIDmode : VNx1HFmode)
+	      TARGET_MIN_VLEN == 32 ? NULL_TREE : riscv_float16_type_node,
+	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1HFmode)
 /* LMUL = 1/2:
 	 Machine mode = VNx1HFmode when TARGET_MIN_VLEN = 32.
 	 Machine mode = VNx2HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16mf2_t, 18, __rvv_float16mf2_t,
-	      TARGET_ZFH ? riscv_float16_type_node : NULL_TREE,
+DEF_RVV_TYPE (vfloat16mf2_t, 18, __rvv_float16mf2_t, riscv_float16_type_node,
 	      TARGET_MIN_VLEN == 32 ? VNx1HFmode : VNx2HFmode)
 /* LMUL = 1:
 	 Machine mode = VNx2HFmode when TARGET_MIN_VLEN = 32.
 	 Machine mode = VNx4HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16m1_t, 17, __rvv_float16m1_t,
-	      TARGET_ZFH ? riscv_float16_type_node : NULL_TREE,
+DEF_RVV_TYPE (vfloat16m1_t, 17, __rvv_float16m1_t, riscv_float16_type_node,
 	      TARGET_MIN_VLEN == 32 ? VNx2HFmode : VNx4HFmode)
 /* LMUL = 2:
 	 Machine mode = VNx4HFmode when TARGET_MIN_VLEN = 32.
 	 Machine mode = VNx8HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16m2_t, 17, __rvv_float16m2_t,
-	      TARGET_ZFH ? riscv_float16_type_node : NULL_TREE,
+DEF_RVV_TYPE (vfloat16m2_t, 17, __rvv_float16m2_t, riscv_float16_type_node,
 	      TARGET_MIN_VLEN == 32 ? VNx4HFmode : VNx8HFmode)
 /* LMUL = 4:
 	 Machine mode = VNx8HFmode when TARGET_MIN_VLEN = 32.
 	 Machine mode = VNx16HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16m4_t, 17, __rvv_float16m4_t,
-	      TARGET_ZFH ? riscv_float16_type_node : NULL_TREE,
+DEF_RVV_TYPE (vfloat16m4_t, 17, __rvv_float16m4_t, riscv_float16_type_node,
 	      TARGET_MIN_VLEN == 32 ? VNx8HFmode : VNx16HFmode)
 /* LMUL = 8:
 	 Machine mode = VNx16HFmode when TARGET_MIN_VLEN = 32.
 	 Machine mode = VNx32HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16m8_t, 17, __rvv_float16m8_t,
-	      TARGET_ZFH ? riscv_float16_type_node : NULL_TREE,
+DEF_RVV_TYPE (vfloat16m8_t, 17, __rvv_float16m8_t, riscv_float16_type_node,
 	      TARGET_MIN_VLEN == 32 ? VNx16HFmode : VNx32HFmode)
 
 #define TARGET_VECTOR_FP32                                                     \
