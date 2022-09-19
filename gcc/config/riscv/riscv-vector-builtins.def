@@ -27,8 +27,8 @@ along with GCC; see the file COPYING3.  If not see
    3.The third argument is the ABI-name. For example, "__rvv_int32m1_t".
    4.The fourth argument is associated scalar type which is used in
      "build_vector_type_for_mode". For "vint32m1_t", we use "intSI_type_node" in
-     RV64. Otherwise, we use "long_integer_type_node". 5.The fifth argument is
-     the machine mode of corresponding RVV type used in
+     RV64. Otherwise, we use "long_integer_type_node".
+   5.The fifth argument is the machine mode of corresponding RVV type used in
      "build_vector_type_for_mode". For "vint32m1_t", we use VNx2SImode when
      TARGET_MIN_VLEN > 32. Otherwise the machine mode is VNx1SImode.  */
 
