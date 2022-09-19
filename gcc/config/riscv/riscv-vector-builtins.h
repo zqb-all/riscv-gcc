@@ -53,7 +53,9 @@ extern machine_mode vector_modes[NUM_VECTOR_TYPES];
 
 void init_builtins ();
 const char *mangle_builtin_type (const_tree);
+#ifdef GCC_TARGET_H
 bool verify_type_context (location_t, type_context_kind, const_tree, bool);
+#endif
 
 } // end namespace riscv_vector
 
