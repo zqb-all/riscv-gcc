@@ -52,12 +52,6 @@ void foo47 () {__rvv_int64m4_t t;}
 void foo48 () {__rvv_uint64m4_t t;}
 void foo49 () {__rvv_int64m8_t t;}
 void foo50 () {__rvv_uint64m8_t t;}
-void foo51 () {__rvv_float16mf4_t t;}
-void foo52 () {__rvv_float16mf2_t t;}
-void foo53 () {__rvv_float16m1_t t;}
-void foo54 () {__rvv_float16m2_t t;}
-void foo55 () {__rvv_float16m4_t t;}
-void foo56 () {__rvv_float16m8_t t;}
 void foo57 () {__rvv_float32mf2_t t;}
 void foo58 () {__rvv_float32m1_t t;}
 void foo59 () {__rvv_float32m2_t t;}

@@ -215,6 +215,7 @@ riscv_init_builtins (void)
 {
   riscv_init_builtin_types ();
   riscv_vector::init_builtins ();
+
   for (size_t i = 0; i < ARRAY_SIZE (riscv_builtins); i++)
     {
       const struct riscv_builtin_description *d = &riscv_builtins[i];

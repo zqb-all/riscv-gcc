@@ -20,34 +20,56 @@ along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
 /* Use "DEF_RVV_TYPE" macro to define RVV datatype builtins.
-   Take "vint32m1_t" for example, the definition macro will be as follows:
-   DEF_RVV_TYPE (vint32m1_t, 15, __rvv_int32m1_t,
-	      TARGET_64BIT ? intSI_type_node : long_integer_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx1SImode : VNx2SImode)
-   1.The first argument "vint32m1_t" is datatype exposed to users.
-   2.The second argument "15" is the length of "__rvv_int32m1_t", it is used
-     for mangled name generation.
-   3.The third argument is associated scalar type which is used in 
-     "build_vector_type_for_mode".
-	 For "vint32m1_t", we use "intSI_type_node" in RV64.
-	 Otherwise, we use "long_integer_type_node".
-   4.machine mode = VNx1SImode when TARGET_MIN_VLEN == 32.
-     Otherwise, mode = VNx2SImode when TARGET_MIN_VLEN > 32.  */
+   1.The first argument is the name exposed to users.
+     For example, "vint32m1_t".
+   2.The second argument is the length of ABI-name.
+     For example, length of "__rvv_int32m1_t" is 15.
+   3.The third argument is the ABI-name. For example, "__rvv_int32m1_t".
+   4.The fourth argument is associated scalar type which is used in
+     "build_vector_type_for_mode". For "vint32m1_t", we use "intSI_type_node" in
+     RV64. Otherwise, we use "long_integer_type_node". 5.The fifth argument is
+     the machine mode of corresponding RVV type used in
+     "build_vector_type_for_mode". For "vint32m1_t", we use VNx2SImode when
+     TARGET_MIN_VLEN > 32. Otherwise the machine mode is VNx1SImode.  */
 
 #ifndef DEF_RVV_TYPE
-#define DEF_RVV_TYPE(USER_NAME, ABI_NAME, NCHARS, SCALAR_TYPE, VECTOR_MODE)
+#define DEF_RVV_TYPE(USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE)
 #endif
+#ifndef ADJUST_TYPE0
+#define ADJUST_TYPE0(USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE1, SCALAR_TYPE2,  \
+		     VECTOR_MODE1, VECTOR_MODE2, REQUIREMENT)                  \
+  DEF_RVV_TYPE (USER_NAME, NCHARS, ABI_NAME,                                   \
+		REQUIREMENT ? SCALAR_TYPE1 : SCALAR_TYPE2,                     \
+		REQUIREMENT ? VECTOR_MODE1 : VECTOR_MODE2)
+#endif
+#ifndef ADJUST_TYPE1
+#define ADJUST_TYPE1(USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE1,   \
+		     VECTOR_MODE2, REQUIREMENT)                                \
+  DEF_RVV_TYPE (USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE,                      \
+		REQUIREMENT ? VECTOR_MODE1 : VECTOR_MODE2)
+#endif
+#ifndef ADJUST_TYPE2
+#define ADJUST_TYPE2(USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE1, SCALAR_TYPE2,  \
+		     VECTOR_MODE1, VECTOR_MODE2, REQUIREMENT1, REQUIREMENT2)   \
+  DEF_RVV_TYPE (USER_NAME, NCHARS, ABI_NAME,                                   \
+		REQUIREMENT1 ? SCALAR_TYPE1 : NULL_TREE,                       \
+		REQUIREMENT1 ? (REQUIREMENT2 ? VECTOR_MODE1 : VECTOR_MODE2)    \
+			     : VOIDmode)
+#endif
+#define TARGET_VECTOR_FP32                                                     \
+  (TARGET_HARD_FLOAT && (TARGET_VECTOR_ELEN_FP_32 || TARGET_VECTOR_ELEN_FP_64))
+#define TARGET_VECTOR_FP64                                                     \
+  (TARGET_DOUBLE_FLOAT && TARGET_VECTOR_ELEN_FP_64 && (TARGET_MIN_VLEN > 32))
 
-/*
-	 Set scalar_type to NULL_TREE when the corresponding vector_type is
-disabled. According to rvv-intrinsic and RISC-V 'V' Extension ISA document:
-	 https://github.com/riscv-non-isa/rvv-intrinsic-doc/blob/master/rvv-intrinsic-rfc.md.
-	 https://github.com/riscv/riscv-v-spec/blob/master/v-spec.adoc.
+/* Set scalar_type to NULL_TREE when the corresponding vector_type is
+   disabled. According to rvv-intrinsic and RISC-V 'V' Extension ISA document:
+   https://github.com/riscv-non-isa/rvv-intrinsic-doc/blob/master/rvv-intrinsic-rfc.md.
+   https://github.com/riscv/riscv-v-spec/blob/master/v-spec.adoc.
 
-	 Data Types
-	 Encode SEW and LMUL into data types.
-	 We enforce the constraint LMUL ≥ SEW/ELEN in the implementation.
-	 There are the following data types for MIN_VLEN > 32.
+   Data Types
+   Encode SEW and LMUL into data types.
+   We enforce the constraint LMUL ≥ SEW/ELEN in the implementation.
+   There are the following data types for MIN_VLEN > 32.
 
 Note: N/A means the corresponding vector type is disabled.
 
@@ -69,8 +91,8 @@ mask types. There are the following mask types.
 
 n = SEW/LMUL
 
-|Types|n=1	  |n=2	  |n=4	  |n=8	 |n=16  |n=32	 |n=64  |
-|bool	|VNx64BI|VNx32BI|VNx16BI|VNx8BI|VNx4BI|VNx2BI|VNx1BI|
+|Types|n=1    |n=2    |n=4    |n=8   |n=16  |n=32  |n=64  |
+|bool |VNx64BI|VNx32BI|VNx16BI|VNx8BI|VNx4BI|VNx2BI|VNx1BI|
 
 There are the following data types for MIN_VLEN = 32.
 
@@ -92,310 +114,230 @@ mask types. There are the following mask types.
 
 n = SEW/LMUL
 
-|Types|n=1	  |n=2	  |n=4	 |n=8	  |n=16  |n=32	|n=64|
-|bool	|VNx32BI|VNx16BI|VNx8BI|VNx4BI|VNx2BI|VNx1BI|N/A |
+|Types|n=1    |n=2    |n=4   |n=8   |n=16  |n=32  |n=64|
+|bool |VNx32BI|VNx16BI|VNx8BI|VNx4BI|VNx2BI|VNx1BI|N/A |
 
-*/
+TODO: FP16 vector needs support of 'zvfh', we don't support it yet.  */
 
 /* SEW/LMUL = 64:
-	 Disable when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx1BImode.  */
-DEF_RVV_TYPE (vbool64_t, 14, __rvv_bool64_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : boolean_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1BImode)
+   Only enable when TARGET_MIN_VLEN > 32 and machine mode = VNx1BImode.  */
+ADJUST_TYPE0 (vbool64_t, 14, __rvv_bool64_t, boolean_type_node, NULL_TREE,
+	      VNx1BImode, VOIDmode, TARGET_MIN_VLEN > 32)
 /* SEW/LMUL = 32:
-	 Machine mode = VNx1BImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx2BImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vbool32_t, 14, __rvv_bool32_t, boolean_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx1BImode : VNx2BImode)
+   Machine mode = VNx2BImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx1BImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vbool32_t, 14, __rvv_bool32_t, boolean_type_node, VNx2BImode,
+	      VNx1BImode, TARGET_MIN_VLEN > 32)
 /* SEW/LMUL = 16:
-	 Machine mode = VNx2BImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx4BImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vbool16_t, 14, __rvv_bool16_t, boolean_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx2BImode : VNx4BImode)
+   Machine mode = VNx2BImode when TARGET_MIN_VLEN = 32.
+   Machine mode = VNx4BImode when TARGET_MIN_VLEN > 32.  */
+ADJUST_TYPE1 (vbool16_t, 14, __rvv_bool16_t, boolean_type_node, VNx4BImode,
+	      VNx2BImode, TARGET_MIN_VLEN > 32)
 /* SEW/LMUL = 8:
-	 Machine mode = VNx4BImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx8BImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vbool8_t, 13, __rvv_bool8_t, boolean_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx4BImode : VNx8BImode)
+   Machine mode = VNx8BImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx4BImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vbool8_t, 13, __rvv_bool8_t, boolean_type_node, VNx8BImode,
+	      VNx4BImode, TARGET_MIN_VLEN > 32)
 /* SEW/LMUL = 4:
-	 Machine mode = VNx8BImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx16BImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vbool4_t, 13, __rvv_bool4_t, boolean_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx8BImode : VNx16BImode)
+   Machine mode = VNx16BImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx8BImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vbool4_t, 13, __rvv_bool4_t, boolean_type_node, VNx16BImode,
+	      VNx8BImode, TARGET_MIN_VLEN > 32)
 /* SEW/LMUL = 2:
-	 Machine mode = VNx16BImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx32BImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vbool2_t, 13, __rvv_bool2_t, boolean_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx16BImode : VNx32BImode)
+   Machine mode = VNx32BImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx16BImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vbool2_t, 13, __rvv_bool2_t, boolean_type_node, VNx32BImode,
+	      VNx16BImode, TARGET_MIN_VLEN > 32)
 /* SEW/LMUL = 1:
-	 Machine mode = VNx32BImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx64BImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vbool1_t, 13, __rvv_bool1_t, boolean_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx32BImode : VNx64BImode)
+   Machine mode = VNx64BImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx32BImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vbool1_t, 13, __rvv_bool1_t, boolean_type_node, VNx64BImode,
+	      VNx32BImode, TARGET_MIN_VLEN > 32)
+
 /* LMUL = 1/8:
-	 Disable when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx1QImode.  */
-DEF_RVV_TYPE (vint8mf8_t, 15, __rvv_int8mf8_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1QImode)
-DEF_RVV_TYPE (vuint8mf8_t, 16, __rvv_uint8mf8_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : unsigned_intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1QImode)
+   Only enble when TARGET_MIN_VLEN > 32 and machine mode = VNx1QImode.  */
+ADJUST_TYPE0 (vint8mf8_t, 15, __rvv_int8mf8_t, intQI_type_node, NULL_TREE,
+	      VNx1QImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vuint8mf8_t, 16, __rvv_uint8mf8_t, unsigned_intQI_type_node,
+	      NULL_TREE, VNx1QImode, VOIDmode, TARGET_MIN_VLEN > 32)
 /* LMUL = 1/4:
-	 Machine mode = VNx1QImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx2QImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint8mf4_t, 15, __rvv_int8mf4_t, intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx1QImode : VNx2QImode)
-DEF_RVV_TYPE (vuint8mf4_t, 16, __rvv_uint8mf4_t, unsigned_intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx1QImode : VNx2QImode)
+   Machine mode = VNx2QImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx1QImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint8mf4_t, 15, __rvv_int8mf4_t, intQI_type_node, VNx2QImode,
+	      VNx1QImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint8mf4_t, 16, __rvv_uint8mf4_t, unsigned_intQI_type_node,
+	      VNx2QImode, VNx1QImode, TARGET_MIN_VLEN > 32)
 /* LMUL = 1/2:
-	 Machine mode = VNx2QImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx4QImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint8mf2_t, 15, __rvv_int8mf2_t, intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx2QImode : VNx4QImode)
-DEF_RVV_TYPE (vuint8mf2_t, 16, __rvv_uint8mf2_t, unsigned_intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx2QImode : VNx4QImode)
+   Machine mode = VNx4QImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx2QImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint8mf2_t, 15, __rvv_int8mf2_t, intQI_type_node, VNx4QImode,
+	      VNx2QImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint8mf2_t, 16, __rvv_uint8mf2_t, unsigned_intQI_type_node,
+	      VNx4QImode, VNx2QImode, TARGET_MIN_VLEN > 32)
 /* LMUL = 1:
-	 Machine mode = VNx4QImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx8QImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint8m1_t, 14, __rvv_int8m1_t, intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx4QImode : VNx8QImode)
-DEF_RVV_TYPE (vuint8m1_t, 15, __rvv_uint8m1_t, unsigned_intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx4QImode : VNx8QImode)
+   Machine mode = VNx8QImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx4QImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint8m1_t, 14, __rvv_int8m1_t, intQI_type_node, VNx8QImode,
+	      VNx4QImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint8m1_t, 15, __rvv_uint8m1_t, unsigned_intQI_type_node,
+	      VNx8QImode, VNx4QImode, TARGET_MIN_VLEN > 32)
 /* LMUL = 2:
-	 Machine mode = VNx8QImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx16QImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint8m2_t, 14, __rvv_int8m2_t, intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx8QImode : VNx16QImode)
-DEF_RVV_TYPE (vuint8m2_t, 15, __rvv_uint8m2_t, unsigned_intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx8QImode : VNx16QImode)
+   Machine mode = VNx16QImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx8QImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint8m2_t, 14, __rvv_int8m2_t, intQI_type_node, VNx16QImode,
+	      VNx8QImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint8m2_t, 15, __rvv_uint8m2_t, unsigned_intQI_type_node,
+	      VNx16QImode, VNx8QImode, TARGET_MIN_VLEN > 32)
 /* LMUL = 4:
-	 Machine mode = VNx16QImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx32QImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint8m4_t, 14, __rvv_int8m4_t, intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx16QImode : VNx32QImode)
-DEF_RVV_TYPE (vuint8m4_t, 15, __rvv_uint8m4_t, unsigned_intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx16QImode : VNx32QImode)
+   Machine mode = VNx32QImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx16QImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint8m4_t, 14, __rvv_int8m4_t, intQI_type_node, VNx32QImode,
+	      VNx16QImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint8m4_t, 15, __rvv_uint8m4_t, unsigned_intQI_type_node,
+	      VNx32QImode, VNx16QImode, TARGET_MIN_VLEN > 32)
 /* LMUL = 8:
-	 Machine mode = VNx32QImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx64QImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint8m8_t, 14, __rvv_int8m8_t, intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx32QImode : VNx64QImode)
-DEF_RVV_TYPE (vuint8m8_t, 15, __rvv_uint8m8_t, unsigned_intQI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx32QImode : VNx64QImode)
-/* LMUL = 1/4:
-	 Disable when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx1HImode.  */
-DEF_RVV_TYPE (vint16mf4_t, 16, __rvv_int16mf4_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1HImode)
-DEF_RVV_TYPE (vuint16mf4_t, 17, __rvv_uint16mf4_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : unsigned_intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1HImode)
-/* LMUL = 1/2:
-	 Machine mode = VNx1HImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx2HImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint16mf2_t, 16, __rvv_int16mf2_t, intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx1HImode : VNx2HImode)
-DEF_RVV_TYPE (vuint16mf2_t, 17, __rvv_uint16mf2_t, unsigned_intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx1HImode : VNx2HImode)
-/* LMUL = 1:
-	 Machine mode = VNx2HImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx4HImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint16m1_t, 15, __rvv_int16m1_t, intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx2HImode : VNx4HImode)
-DEF_RVV_TYPE (vuint16m1_t, 16, __rvv_uint16m1_t, unsigned_intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx2HImode : VNx4HImode)
-/* LMUL = 2:
-	 Machine mode = VNx4HImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx8HImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint16m2_t, 15, __rvv_int16m2_t, intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx4HImode : VNx8HImode)
-DEF_RVV_TYPE (vuint16m2_t, 16, __rvv_uint16m2_t, unsigned_intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx4HImode : VNx8HImode)
-/* LMUL = 4:
-	 Machine mode = VNx8HImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx16HImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint16m4_t, 15, __rvv_int16m4_t, intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx8HImode : VNx16HImode)
-DEF_RVV_TYPE (vuint16m4_t, 16, __rvv_uint16m4_t, unsigned_intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx8HImode : VNx16HImode)
-/* LMUL = 8:
-	 Machine mode = VNx16HImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx32HImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint16m8_t, 15, __rvv_int16m8_t, intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx16HImode : VNx32HImode)
-DEF_RVV_TYPE (vuint16m8_t, 16, __rvv_uint16m8_t, unsigned_intHI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx16HImode : VNx32HImode)
-/* LMUL = 1/2:
-	 Disable when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx1SImode.  */
-DEF_RVV_TYPE (vint32mf2_t, 16, __rvv_int32mf2_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE
-	      : TARGET_64BIT	    ? intSI_type_node
-				    : long_integer_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1SImode)
-DEF_RVV_TYPE (vuint32mf2_t, 17, __rvv_uint32mf2_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE
-	      : TARGET_64BIT	    ? unsigned_intSI_type_node
-				    : long_unsigned_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1SImode)
-/* LMUL = 1:
-	 Machine mode = VNx1SImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx2SImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint32m1_t, 15, __rvv_int32m1_t,
-	      TARGET_64BIT ? intSI_type_node : long_integer_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx1SImode : VNx2SImode)
-DEF_RVV_TYPE (vuint32m1_t, 16, __rvv_uint32m1_t,
-	      TARGET_64BIT ? unsigned_intSI_type_node : long_unsigned_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx1SImode : VNx2SImode)
-/* LMUL = 2:
-	 Machine mode = VNx2SImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx4SImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint32m2_t, 15, __rvv_int32m2_t,
-	      TARGET_64BIT ? intSI_type_node : long_integer_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx2SImode : VNx4SImode)
-DEF_RVV_TYPE (vuint32m2_t, 16, __rvv_uint32m2_t,
-	      TARGET_64BIT ? unsigned_intSI_type_node : long_unsigned_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx2SImode : VNx4SImode)
-/* LMUL = 4:
-	 Machine mode = VNx4SImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx8SImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint32m4_t, 15, __rvv_int32m4_t,
-	      TARGET_64BIT ? intSI_type_node : long_integer_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx4SImode : VNx8SImode)
-DEF_RVV_TYPE (vuint32m4_t, 16, __rvv_uint32m4_t,
-	      TARGET_64BIT ? unsigned_intSI_type_node : long_unsigned_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx4SImode : VNx8SImode)
-/* LMUL = 8:
-	 Machine mode = VNx8SImode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx16SImode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vint32m8_t, 15, __rvv_int32m8_t,
-	      TARGET_64BIT ? intSI_type_node : long_integer_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx8SImode : VNx16SImode)
-DEF_RVV_TYPE (vuint32m8_t, 16, __rvv_uint32m8_t,
-	      TARGET_64BIT ? unsigned_intSI_type_node : long_unsigned_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx8SImode : VNx16SImode)
-/* SEW = 64:
-	 Disable when TARGET_MIN_VLEN = 32.  */
-DEF_RVV_TYPE (vint64m1_t, 15, __rvv_int64m1_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : intDI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1DImode)
-DEF_RVV_TYPE (vuint64m1_t, 16, __rvv_uint64m1_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : unsigned_intDI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1DImode)
-DEF_RVV_TYPE (vint64m2_t, 15, __rvv_int64m2_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : intDI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx2DImode)
-DEF_RVV_TYPE (vuint64m2_t, 16, __rvv_uint64m2_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : unsigned_intDI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx2DImode)
-DEF_RVV_TYPE (vint64m4_t, 15, __rvv_int64m4_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : intDI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx4DImode)
-DEF_RVV_TYPE (vuint64m4_t, 16, __rvv_uint64m4_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : unsigned_intDI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx4DImode)
-DEF_RVV_TYPE (vint64m8_t, 15, __rvv_int64m8_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : intDI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx8DImode)
-DEF_RVV_TYPE (vuint64m8_t, 16, __rvv_uint64m8_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : unsigned_intDI_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx8DImode)
-/* LMUL = 1/4:
-	 Disable when TARGET_MIN_VLEN = 32 or !TARGET_ZFH.
-	 Machine mode = VNx1HFmode.  */
-DEF_RVV_TYPE (vfloat16mf4_t, 18, __rvv_float16mf4_t,
-	      TARGET_MIN_VLEN == 32 ? NULL_TREE : riscv_float16_type_node,
-	      TARGET_MIN_VLEN == 32 ? VOIDmode : VNx1HFmode)
-/* LMUL = 1/2:
-	 Machine mode = VNx1HFmode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx2HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16mf2_t, 18, __rvv_float16mf2_t, riscv_float16_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx1HFmode : VNx2HFmode)
-/* LMUL = 1:
-	 Machine mode = VNx2HFmode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx4HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16m1_t, 17, __rvv_float16m1_t, riscv_float16_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx2HFmode : VNx4HFmode)
-/* LMUL = 2:
-	 Machine mode = VNx4HFmode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx8HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16m2_t, 17, __rvv_float16m2_t, riscv_float16_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx4HFmode : VNx8HFmode)
-/* LMUL = 4:
-	 Machine mode = VNx8HFmode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx16HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16m4_t, 17, __rvv_float16m4_t, riscv_float16_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx8HFmode : VNx16HFmode)
-/* LMUL = 8:
-	 Machine mode = VNx16HFmode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx32HFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat16m8_t, 17, __rvv_float16m8_t, riscv_float16_type_node,
-	      TARGET_MIN_VLEN == 32 ? VNx16HFmode : VNx32HFmode)
+   Machine mode = VNx64QImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx32QImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint8m8_t, 14, __rvv_int8m8_t, intQI_type_node, VNx64QImode,
+	      VNx32QImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint8m8_t, 15, __rvv_uint8m8_t, unsigned_intQI_type_node,
+	      VNx64QImode, VNx32QImode, TARGET_MIN_VLEN > 32)
 
-#define TARGET_VECTOR_FP32                                                     \
-  (TARGET_HARD_FLOAT && (TARGET_VECTOR_ELEN_FP_32 || TARGET_VECTOR_ELEN_FP_64))
+/* LMUL = 1/4:
+   Only enble when TARGET_MIN_VLEN > 32 and machine mode = VNx1HImode.  */
+ADJUST_TYPE0 (vint16mf4_t, 16, __rvv_int16mf4_t, intHI_type_node, NULL_TREE,
+	      VNx1HImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vuint16mf4_t, 17, __rvv_uint16mf4_t, unsigned_intHI_type_node,
+	      NULL_TREE, VNx1HImode, VOIDmode, TARGET_MIN_VLEN > 32)
 /* LMUL = 1/2:
-	 Disable when TARGET_MIN_VLEN = 32 or !TARGET_VECTOR_FP32.
-	 Machine mode = VNx1SFmode.  */
-DEF_RVV_TYPE (vfloat32mf2_t, 18, __rvv_float32mf2_t,
-	      TARGET_MIN_VLEN == 32 || !TARGET_VECTOR_FP32 ? NULL_TREE
-							   : float_type_node,
-	      TARGET_MIN_VLEN == 32 || !TARGET_VECTOR_FP32 ? VOIDmode
-							   : VNx1SFmode)
+   Machine mode = VNx2HImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx1HImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint16mf2_t, 16, __rvv_int16mf2_t, intHI_type_node, VNx2HImode,
+	      VNx1HImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint16mf2_t, 17, __rvv_uint16mf2_t, unsigned_intHI_type_node,
+	      VNx2HImode, VNx1HImode, TARGET_MIN_VLEN > 32)
 /* LMUL = 1:
-	 Machine mode = VNx1SFmode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx2SFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat32m1_t, 17, __rvv_float32m1_t,
-	      TARGET_VECTOR_FP32 ? float_type_node : NULL_TREE,
-	      !TARGET_VECTOR_FP32     ? VOIDmode
-	      : TARGET_MIN_VLEN == 32 ? VNx1SFmode
-				      : VNx2SFmode)
+   Machine mode = VNx4HImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx2HImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint16m1_t, 15, __rvv_int16m1_t, intHI_type_node, VNx4HImode,
+	      VNx2HImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint16m1_t, 16, __rvv_uint16m1_t, unsigned_intHI_type_node,
+	      VNx4HImode, VNx2HImode, TARGET_MIN_VLEN > 32)
 /* LMUL = 2:
-	 Machine mode = VNx2SFmode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx4SFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat32m2_t, 17, __rvv_float32m2_t,
-	      TARGET_VECTOR_FP32 ? float_type_node : NULL_TREE,
-	      !TARGET_VECTOR_FP32     ? VOIDmode
-	      : TARGET_MIN_VLEN == 32 ? VNx2SFmode
-				      : VNx4SFmode)
+   Machine mode = VNx8HImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx4HImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint16m2_t, 15, __rvv_int16m2_t, intHI_type_node, VNx8HImode,
+	      VNx4HImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint16m2_t, 16, __rvv_uint16m2_t, unsigned_intHI_type_node,
+	      VNx8HImode, VNx4HImode, TARGET_MIN_VLEN > 32)
 /* LMUL = 4:
-	 Machine mode = VNx4SFmode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx8SFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat32m4_t, 17, __rvv_float32m4_t,
-	      TARGET_VECTOR_FP32 ? float_type_node : NULL_TREE,
-	      !TARGET_VECTOR_FP32     ? VOIDmode
-	      : TARGET_MIN_VLEN == 32 ? VNx4SFmode
-				      : VNx8SFmode)
+   Machine mode = VNx16HImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx8HImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint16m4_t, 15, __rvv_int16m4_t, intHI_type_node, VNx16HImode,
+	      VNx8HImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint16m4_t, 16, __rvv_uint16m4_t, unsigned_intHI_type_node,
+	      VNx16HImode, VNx8HImode, TARGET_MIN_VLEN > 32)
 /* LMUL = 8:
-	 Machine mode = VNx8SFmode when TARGET_MIN_VLEN = 32.
-	 Machine mode = VNx16SFmode when TARGET_MIN_VLEN > 32.  */
-DEF_RVV_TYPE (vfloat32m8_t, 17, __rvv_float32m8_t,
-	      TARGET_VECTOR_FP32 ? float_type_node : NULL_TREE,
-	      !TARGET_VECTOR_FP32     ? VOIDmode
-	      : TARGET_MIN_VLEN == 32 ? VNx8SFmode
-				      : VNx16SFmode)
+   Machine mode = VNx32HImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx16HImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint16m8_t, 15, __rvv_int16m8_t, intHI_type_node, VNx32HImode,
+	      VNx16HImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint16m8_t, 16, __rvv_uint16m8_t, unsigned_intHI_type_node,
+	      VNx32HImode, VNx16HImode, TARGET_MIN_VLEN > 32)
 
-#define TARGET_VECTOR_FP64                                                     \
-  (TARGET_DOUBLE_FLOAT & TARGET_VECTOR_ELEN_FP_64 & (TARGET_MIN_VLEN > 32))
+/* LMUL = 1/2:
+   Only enble when TARGET_MIN_VLEN > 32 and machine mode = VNx1SImode.  */
+ADJUST_TYPE0 (vint32mf2_t, 16, __rvv_int32mf2_t, int32_type_node, NULL_TREE,
+	      VNx1SImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vuint32mf2_t, 17, __rvv_uint32mf2_t, unsigned_int32_type_node,
+	      NULL_TREE, VNx1SImode, VOIDmode, TARGET_MIN_VLEN > 32)
+/* LMUL = 1:
+   Machine mode = VNx2SImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx1SImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint32m1_t, 15, __rvv_int32m1_t, int32_type_node, VNx2SImode,
+	      VNx1SImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint32m1_t, 16, __rvv_uint32m1_t, unsigned_int32_type_node,
+	      VNx2SImode, VNx1SImode, TARGET_MIN_VLEN > 32)
+/* LMUL = 2:
+   Machine mode = VNx4SImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx2SImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint32m2_t, 15, __rvv_int32m2_t, int32_type_node, VNx4SImode,
+	      VNx2SImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint32m2_t, 16, __rvv_uint32m2_t, unsigned_int32_type_node,
+	      VNx4SImode, VNx2SImode, TARGET_MIN_VLEN > 32)
+/* LMUL = 4:
+   Machine mode = VNx8SImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx4SImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint32m4_t, 15, __rvv_int32m4_t, int32_type_node, VNx8SImode,
+	      VNx4SImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint32m4_t, 16, __rvv_uint32m4_t, unsigned_int32_type_node,
+	      VNx8SImode, VNx4SImode, TARGET_MIN_VLEN > 32)
+/* LMUL = 8:
+   Machine mode = VNx16SImode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx8SImode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE1 (vint32m8_t, 15, __rvv_int32m8_t, int32_type_node, VNx16SImode,
+	      VNx8SImode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE1 (vuint32m8_t, 16, __rvv_uint32m8_t, unsigned_int32_type_node,
+	      VNx16SImode, VNx8SImode, TARGET_MIN_VLEN > 32)
 
 /* SEW = 64:
-	 Disable when !TARGET_VECTOR_FP64.  */
-DEF_RVV_TYPE (vfloat64m1_t, 17, __rvv_float64m1_t,
-	      TARGET_VECTOR_FP64 ? double_type_node : NULL_TREE,
-	      TARGET_VECTOR_FP64 ? VNx1DFmode : VOIDmode)
-DEF_RVV_TYPE (vfloat64m2_t, 17, __rvv_float64m2_t,
-	      TARGET_VECTOR_FP64 ? double_type_node : NULL_TREE,
-	      TARGET_VECTOR_FP64 ? VNx2DFmode : VOIDmode)
-DEF_RVV_TYPE (vfloat64m4_t, 17, __rvv_float64m4_t,
-	      TARGET_VECTOR_FP64 ? double_type_node : NULL_TREE,
-	      TARGET_VECTOR_FP64 ? VNx4DFmode : VOIDmode)
-DEF_RVV_TYPE (vfloat64m8_t, 17, __rvv_float64m8_t,
-	      TARGET_VECTOR_FP64 ? double_type_node : NULL_TREE,
-	      TARGET_VECTOR_FP64 ? VNx8DFmode : VOIDmode)
+   Disable when TARGET_MIN_VLEN > 32.  */
+ADJUST_TYPE0 (vint64m1_t, 15, __rvv_int64m1_t, intDI_type_node, NULL_TREE,
+	      VNx1DImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vuint64m1_t, 16, __rvv_uint64m1_t, unsigned_intDI_type_node,
+	      NULL_TREE, VNx1DImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vint64m2_t, 15, __rvv_int64m2_t, intDI_type_node, NULL_TREE,
+	      VNx2DImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vuint64m2_t, 16, __rvv_uint64m2_t, unsigned_intDI_type_node,
+	      NULL_TREE, VNx2DImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vint64m4_t, 15, __rvv_int64m4_t, intDI_type_node, NULL_TREE,
+	      VNx4DImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vuint64m4_t, 16, __rvv_uint64m4_t, unsigned_intDI_type_node,
+	      NULL_TREE, VNx4DImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vint64m8_t, 15, __rvv_int64m8_t, intDI_type_node, NULL_TREE,
+	      VNx8DImode, VOIDmode, TARGET_MIN_VLEN > 32)
+ADJUST_TYPE0 (vuint64m8_t, 16, __rvv_uint64m8_t, unsigned_intDI_type_node,
+	      NULL_TREE, VNx8DImode, VOIDmode, TARGET_MIN_VLEN > 32)
+
+/* LMUL = 1/2:
+   Only enble when TARGET_MIN_VLEN > 32 and machine mode = VNx1SFmode.  */
+ADJUST_TYPE0 (vfloat32mf2_t, 18, __rvv_float32mf2_t, float_type_node, NULL_TREE,
+	      VNx1SFmode, VOIDmode,
+	      (TARGET_VECTOR_FP32 && (TARGET_MIN_VLEN > 32)))
+/* LMUL = 1:
+   Machine mode = VNx2SFmode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx1SFmode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE2 (vfloat32m1_t, 17, __rvv_float32m1_t, float_type_node, NULL_TREE,
+	      VNx2SFmode, VNx1SFmode, TARGET_VECTOR_FP32, TARGET_MIN_VLEN > 32)
+/* LMUL = 2:
+   Machine mode = VNx4SFmode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx2SFmode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE2 (vfloat32m2_t, 17, __rvv_float32m2_t, float_type_node, NULL_TREE,
+	      VNx4SFmode, VNx2SFmode, TARGET_VECTOR_FP32, TARGET_MIN_VLEN > 32)
+/* LMUL = 4:
+   Machine mode = VNx8SFmode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx4SFmode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE2 (vfloat32m4_t, 17, __rvv_float32m4_t, float_type_node, NULL_TREE,
+	      VNx8SFmode, VNx4SFmode, TARGET_VECTOR_FP32, TARGET_MIN_VLEN > 32)
+/* LMUL = 8:
+   Machine mode = VNx16SFmode when TARGET_MIN_VLEN > 32.
+   Machine mode = VNx8SFmode when TARGET_MIN_VLEN = 32.  */
+ADJUST_TYPE2 (vfloat32m8_t, 17, __rvv_float32m8_t, float_type_node, NULL_TREE,
+	      VNx16SFmode, VNx8SFmode, TARGET_VECTOR_FP32, TARGET_MIN_VLEN > 32)
+
+/* SEW = 64:
+   Disable when TARGET_VECTOR_FP64.  */
+ADJUST_TYPE0 (vfloat64m1_t, 17, __rvv_float64m1_t, double_type_node, NULL_TREE,
+	      VNx1DFmode, VOIDmode, TARGET_VECTOR_FP64)
+ADJUST_TYPE0 (vfloat64m2_t, 17, __rvv_float64m2_t, double_type_node, NULL_TREE,
+	      VNx2DFmode, VOIDmode, TARGET_VECTOR_FP64)
+ADJUST_TYPE0 (vfloat64m4_t, 17, __rvv_float64m4_t, double_type_node, NULL_TREE,
+	      VNx4DFmode, VOIDmode, TARGET_VECTOR_FP64)
+ADJUST_TYPE0 (vfloat64m8_t, 17, __rvv_float64m8_t, double_type_node, NULL_TREE,
+	      VNx8DFmode, VOIDmode, TARGET_VECTOR_FP64)
 
 #undef TARGET_VECTOR_FP64
 #undef TARGET_VECTOR_FP32
+#undef ADJUST_TYPE1
+#undef ADJUST_TYPE0
 #undef DEF_RVV_TYPE

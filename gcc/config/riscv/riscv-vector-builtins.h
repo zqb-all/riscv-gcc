@@ -43,7 +43,7 @@ struct vector_type_info
    "vector types" for brevity.  */
 enum vector_type_index
 {
-#define DEF_RVV_TYPE(USER_NAME, ABI_NAME, NCHARS, SCALAR_TYPE, VECTOR_MODE)    \
+#define DEF_RVV_TYPE(USER_NAME, ABI_NAME, NCHARS, ARGS...)    \
   VECTOR_TYPE_##USER_NAME,
 #include "riscv-vector-builtins.def"
   NUM_VECTOR_TYPES

@@ -49,7 +49,7 @@ namespace riscv_vector {
 
 /* Information about each RVV type.  */
 static CONSTEXPR const vector_type_info vector_types[] = {
-#define DEF_RVV_TYPE(USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE)    \
+#define DEF_RVV_TYPE(USER_NAME, NCHARS, ABI_NAME, ARGS...)    \
   {#USER_NAME, #ABI_NAME, "u" #NCHARS #ABI_NAME},
 #include "riscv-vector-builtins.def"
 };
@@ -117,6 +117,15 @@ mangle_builtin_type (const_tree type)
 static void
 register_builtin_types ()
 {
+  /* int32_t/uint32_t defined as `long`/`unsigned long` in RV32,
+     but intSI_type_node/unsigned_intSI_type_node is
+     `int` and `unsigned int`, so use long_integer_type_node and
+     long_unsigned_type_node here for type consistent.  */
+  tree int32_type_node
+    = TARGET_64BIT ? intSI_type_node : long_integer_type_node;
+  tree unsigned_int32_type_node
+    = TARGET_64BIT ? unsigned_intSI_type_node : long_unsigned_type_node;
+
 #define DEF_RVV_TYPE(USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE)    \
   scalar_types[VECTOR_TYPE_##USER_NAME] = SCALAR_TYPE;                         \
   vector_modes[VECTOR_TYPE_##USER_NAME] = VECTOR_MODE;
