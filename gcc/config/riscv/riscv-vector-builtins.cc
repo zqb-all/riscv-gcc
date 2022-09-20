@@ -43,6 +43,7 @@
 #include "stringpool.h"
 #include "attribs.h"
 #include "targhooks.h"
+#include "regs.h"
 #include "riscv-vector-builtins.h"
 
 namespace riscv_vector {
@@ -57,11 +58,28 @@ static CONSTEXPR const vector_type_info vector_types[] = {
 /* The scalar type associated with each vector type.  */
 static GTY (()) tree scalar_types[NUM_VECTOR_TYPES];
 /* The machine mode associated with each vector type.  */
-GTY (()) machine_mode vector_modes[NUM_VECTOR_TYPES];
+static GTY (()) machine_mode vector_modes[NUM_VECTOR_TYPES];
 /* The RVV types, with their built-in
    "__rvv..._t" name.  Allow an index of NUM_VECTOR_TYPES, which always
    yields a null tree.  */
 static GTY(()) tree abi_vector_types[NUM_VECTOR_TYPES + 1];
+
+rvv_switcher::rvv_switcher ()
+{
+  /* Set have_regs_of_mode before targetm.init_builtins ().  */
+  memcpy (m_old_have_regs_of_mode, have_regs_of_mode,
+	  sizeof (have_regs_of_mode));
+  for (int i = 0; i < NUM_MACHINE_MODES; ++i)
+    if (riscv_v_ext_enabled_vector_mode_p ((machine_mode) i))
+      have_regs_of_mode[i] = true;
+}
+
+rvv_switcher::~rvv_switcher ()
+{
+  /* Recover back have_regs_of_mode.  */
+  memcpy (have_regs_of_mode, m_old_have_regs_of_mode,
+	  sizeof (have_regs_of_mode));
+}
 
 /* Add type attributes to builtin type tree, currently only the mangled name. */
 static void
@@ -126,21 +144,32 @@ register_builtin_types ()
   tree unsigned_int32_type_node
     = TARGET_64BIT ? unsigned_intSI_type_node : long_unsigned_type_node;
 
-#define DEF_RVV_TYPE(USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE)    \
-  scalar_types[VECTOR_TYPE_##USER_NAME] = SCALAR_TYPE;                         \
-  vector_modes[VECTOR_TYPE_##USER_NAME] = VECTOR_MODE;
+  machine_mode mode;
+#define DEF_RVV_TYPE(USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE,    \
+		     VECTOR_MODE_MIN_VLEN_32)                                  \
+  mode = TARGET_MIN_VLEN > 32 ? VECTOR_MODE##mode                              \
+			      : VECTOR_MODE_MIN_VLEN_32##mode;                 \
+  scalar_types[VECTOR_TYPE_##USER_NAME]                                        \
+    = riscv_v_ext_enabled_vector_mode_p (mode) ? SCALAR_TYPE##_type_node       \
+					       : NULL_TREE;                    \
+  vector_modes[VECTOR_TYPE_##USER_NAME]                                        \
+    = riscv_v_ext_enabled_vector_mode_p (mode) ? mode : VOIDmode;
 #include "riscv-vector-builtins.def"
 
   for (unsigned int i = 0; i < NUM_VECTOR_TYPES; ++i)
     {
       tree eltype = scalar_types[i];
-      machine_mode mode = vector_modes[i];
-      /* In riscv-vector-builtins.def, we disabled the datatypes according
-       * '-march'.  */
+      mode = vector_modes[i];
+      /* We disabled the datatypes according '-march'.  */
       if (!eltype)
 	continue;
 
       tree vectype = build_vector_type_for_mode (eltype, mode);
+      gcc_assert (
+	VECTOR_MODE_P (TYPE_MODE (vectype)) && TYPE_MODE (vectype) == mode
+	&& TYPE_MODE_RAW (vectype) == mode && TYPE_ALIGN (vectype) <= 128
+	&& known_eq (tree_to_poly_uint64 (TYPE_SIZE (vectype)),
+		     GET_MODE_BITSIZE (mode)));
       vectype = build_distinct_type_copy (vectype);
       gcc_assert (vectype == TYPE_MAIN_VARIANT (vectype));
       SET_TYPE_STRUCTURAL_EQUALITY (vectype);
@@ -159,6 +188,7 @@ register_builtin_types ()
 void
 init_builtins ()
 {
+  rvv_switcher rvv;
   if (!TARGET_VECTOR)
     return;
   register_builtin_types ();
