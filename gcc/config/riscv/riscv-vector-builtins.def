@@ -1,7 +1,6 @@
 /* Builtins macros for RISC-V 'V' Extension for GNU compiler.
-	 Copyright (C) 2022-2022 Free Software Foundation, Inc.
-	 Contributed by Ju-Zhe Zhong (juzhe.zhong@rivai.ai), RiVAI Technologies
-Ltd.
+   Copyright (C) 2022-2022 Free Software Foundation, Inc.
+   Contributed by Ju-Zhe Zhong (juzhe.zhong@rivai.ai), RiVAI Technologies Ltd.
 
 This file is part of GCC.
 
@@ -56,10 +55,14 @@ along with GCC; see the file COPYING3.  If not see
 		REQUIREMENT1 ? (REQUIREMENT2 ? VECTOR_MODE1 : VECTOR_MODE2)    \
 			     : VOIDmode)
 #endif
+#ifndef TARGET_VECTOR_FP32
 #define TARGET_VECTOR_FP32                                                     \
   (TARGET_HARD_FLOAT && (TARGET_VECTOR_ELEN_FP_32 || TARGET_VECTOR_ELEN_FP_64))
+#endif
+#ifndef TARGET_VECTOR_FP64
 #define TARGET_VECTOR_FP64                                                     \
   (TARGET_DOUBLE_FLOAT && TARGET_VECTOR_ELEN_FP_64 && (TARGET_MIN_VLEN > 32))
+#endif
 
 /* Set scalar_type to NULL_TREE when the corresponding vector_type is
    disabled. According to rvv-intrinsic and RISC-V 'V' Extension ISA document:
@@ -338,6 +341,7 @@ ADJUST_TYPE0 (vfloat64m8_t, 17, __rvv_float64m8_t, double_type_node, NULL_TREE,
 
 #undef TARGET_VECTOR_FP64
 #undef TARGET_VECTOR_FP32
+#undef ADJUST_TYPE2
 #undef ADJUST_TYPE1
 #undef ADJUST_TYPE0
 #undef DEF_RVV_TYPE
