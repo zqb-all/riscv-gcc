@@ -39,7 +39,8 @@ module IEEE_ARITHMETIC
     IEEE_DIVIDE_BY_ZERO, IEEE_UNDERFLOW, IEEE_INEXACT, IEEE_USUAL, &
     IEEE_ALL, IEEE_STATUS_TYPE, IEEE_GET_FLAG, IEEE_GET_HALTING_MODE, &
     IEEE_GET_STATUS, IEEE_SET_FLAG, IEEE_SET_HALTING_MODE, &
-    IEEE_SET_STATUS, IEEE_SUPPORT_FLAG, IEEE_SUPPORT_HALTING
+    IEEE_SET_STATUS, IEEE_SUPPORT_FLAG, IEEE_SUPPORT_HALTING, &
+    IEEE_MODES_TYPE, IEEE_GET_MODES, IEEE_SET_MODES
 
   ! Derived types and named constants
 
@@ -73,6 +74,7 @@ module IEEE_ARITHMETIC
     IEEE_TO_ZERO           = IEEE_ROUND_TYPE(GFC_FPE_TOWARDZERO), &
     IEEE_UP                = IEEE_ROUND_TYPE(GFC_FPE_UPWARD), &
     IEEE_DOWN              = IEEE_ROUND_TYPE(GFC_FPE_DOWNWARD), &
+    IEEE_AWAY              = IEEE_ROUND_TYPE(GFC_FPE_AWAY), &
     IEEE_OTHER             = IEEE_ROUND_TYPE(0)
 
 
@@ -814,7 +816,7 @@ REM_MACRO(4,4,4)
                      IEEE_SUPPORT_ROUNDING_NOARG
   end interface
   public :: IEEE_SUPPORT_ROUNDING
-  
+
   ! Interface to the FPU-specific function
   interface
     pure integer function support_rounding_helper(flag) &
@@ -837,7 +839,7 @@ REM_MACRO(4,4,4)
                      IEEE_SUPPORT_UNDERFLOW_CONTROL_NOARG
   end interface
   public :: IEEE_SUPPORT_UNDERFLOW_CONTROL
-  
+
   ! Interface to the FPU-specific function
   interface
     pure integer function support_underflow_control_helper(kind) &
@@ -1044,9 +1046,10 @@ contains
 
   ! IEEE_GET_ROUNDING_MODE
 
-  subroutine IEEE_GET_ROUNDING_MODE (ROUND_VALUE)
+  subroutine IEEE_GET_ROUNDING_MODE (ROUND_VALUE, RADIX)
     implicit none
     type(IEEE_ROUND_TYPE), intent(out) :: ROUND_VALUE
+    integer, intent(in), optional :: RADIX
 
     interface
       integer function helper() &
@@ -1060,9 +1063,10 @@ contains
 
   ! IEEE_SET_ROUNDING_MODE
 
-  subroutine IEEE_SET_ROUNDING_MODE (ROUND_VALUE)
+  subroutine IEEE_SET_ROUNDING_MODE (ROUND_VALUE, RADIX)
     implicit none
     type(IEEE_ROUND_TYPE), intent(in) :: ROUND_VALUE
+    integer, intent(in), optional :: RADIX
 
     interface
       subroutine helper(val) &
@@ -1070,7 +1074,13 @@ contains
         integer, value :: val
       end subroutine
     end interface
-    
+
+    ! We do not support RADIX = 10, and such calls should not
+    ! modify the binary rounding mode.
+    if (present(RADIX)) then
+      if (RADIX == 10) return
+    end if
+
     call helper(ROUND_VALUE%hidden)
   end subroutine
 
