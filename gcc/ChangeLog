@@ -1,3 +1,1168 @@
+2022-09-27  Eugene Rozenfeld  <erozen@microsoft.com>
+
+	* ipa-cp.cc (good_cloning_opportunity_p): Fix profile count comparison.
+
+2022-09-27  Kim Kuparinen  <kim.kuparinen@rightware.com>
+
+	* doc/invoke.texi: Update ABI version info.
+
+2022-09-27  Aldy Hernandez  <aldyh@redhat.com>
+
+	* gimple-range-op.cc (cfn_popcount): Calculate the popcount of a
+	singleton.
+
+2022-09-27  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range.cc (irange::set_nonzero_bits): Set range when known.
+
+2022-09-27  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range.h (irange::set): New version taking wide_int_ref.
+
+2022-09-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/107029
+	* tree-ssa-reassoc.cc (optimize_range_tests_cmp_bitwise): Treat
+	OFFSET_TYPE like POINTER_TYPE, except that OFFSET_TYPE may be
+	signed and so can trigger even the (b % 4) == 3 case.
+
+2022-09-27  Jeff Law  <jeffreyalaw@gmail.com>
+
+	* cfgrtl.cc (fixup_reorder_chain): Verify that simple_return
+	and return are available before trying to use them.
+
+2022-09-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/106652
+	PR c++/85518
+	* tree-core.h (enum tree_index): Add TI_FLOAT128T_TYPE
+	enumerator.
+	* tree.h (float128t_type_node): Define.
+	* tree.cc (build_common_tree_nodes): Initialize float128t_type_node.
+	* builtins.def (DEF_FLOATN_BUILTIN): Adjust comment now that
+	_Float<N> is supported in C++ too.
+	* config/i386/i386.cc (ix86_mangle_type): Only mangle as "g"
+	float128t_type_node.
+	* config/i386/i386-builtins.cc (ix86_init_builtin_types): Use
+	float128t_type_node for __float128 instead of float128_type_node
+	and create it if NULL.
+	* config/i386/avx512fp16intrin.h (_mm_setzero_ph, _mm256_setzero_ph,
+	_mm512_setzero_ph, _mm_set_sh, _mm_load_sh): Use 0.0f16 instead of
+	0.0f.
+	* config/ia64/ia64.cc (ia64_init_builtins): Use
+	float128t_type_node for __float128 instead of float128_type_node
+	and create it if NULL.
+	* config/rs6000/rs6000-c.cc (is_float128_p): Also return true
+	for float128t_type_node if non-NULL.
+	* config/rs6000/rs6000.cc (rs6000_mangle_type): Don't mangle
+	float128_type_node as "u9__ieee128".
+	* config/rs6000/rs6000-builtin.cc (rs6000_init_builtins): Use
+	float128t_type_node for __float128 instead of float128_type_node
+	and create it if NULL.
+
+2022-09-26  Martin Liska  <mliska@suse.cz>
+
+	* doc/invoke.texi: Add missing dash for
+	  Wanalyzer-exposure-through-uninit-copy.
+
+2022-09-26  Aldy Hernandez  <aldyh@redhat.com>
+
+	PR tree-optimization/107009
+	* range-op.cc (operator_bitwise_and::op1_range): Optimize 0 = x & MASK.
+	(range_op_bitwise_and_tests): New test.
+
+2022-09-26  Aldy Hernandez  <aldyh@redhat.com>
+
+	PR tree-optimization/107009
+	* tree-ssa-dom.cc
+	(dom_opt_dom_walker::set_global_ranges_from_unreachable_edges):
+	Iterate over exports.
+
+2022-09-26  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* config.gcc (with_arch) [nvptx]: Allow '--with-arch' to override
+	the default.
+	* config/nvptx/gen-multilib-matches.sh: New.
+	* config/nvptx/t-nvptx (MULTILIB_OPTIONS, MULTILIB_MATCHES)
+	(MULTILIB_EXCEPTIONS): Handle this.
+	* doc/install.texi (Specific) <nvptx-*-none>: Document this.
+	* doc/invoke.texi (Nvidia PTX Options): Likewise.
+
+2022-09-26  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* config.gcc (TM_MULTILIB_CONFIG) [nvptx]: Set to '$with_arch'.
+	* config/nvptx/t-nvptx (MULTILIB_OPTIONS, MULTILIB_MATCHES)
+	(MULTILIB_EXCEPTIONS): Handle it.
+
+2022-09-26  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* config.gcc (with_arch) [nvptx]: Set to 'sm_30'.
+	* config/nvptx/nvptx.cc (nvptx_option_override): Assert that
+	'-misa' appeared.
+	* config/nvptx/nvptx.h (OPTION_DEFAULT_SPECS): Define.
+	* config/nvptx/nvptx.opt (misa=): Remove 'Init'.
+
+2022-09-26  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* config/nvptx/nvptx.h (ASM_SPEC): Define.
+
+2022-09-26  Jeff Law  <jeffreyalaw@gmail.com>
+
+	* cfgcleanup.cc (bb_is_just_return): No longer static.
+	* cfgcleanup.h (bb_is_just_return): Add prototype.
+	* cfgrtl.cc (fixup_reorder_chain): Do not create an
+	unconditional jump to a return block.  Conditionally
+	remove unreachable blocks.
+
+2022-09-26  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR middle-end/106982
+	* omp-low.cc (lower_oacc_reductions): Add some unshare_expr.
+
+2022-09-26  Martin Liska  <mliska@suse.cz>
+
+	* config/s390/s390.cc (s390_rtx_costs): Remove dest variable
+	and use only dst.
+
+2022-09-26  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64-arches.def (armv9.1-a): Define.
+	(armv9.2-a): Likewise.
+	(armv9.3-a): Likewise.
+	* config/aarch64/aarch64.h (AARCH64_FL_V9_1): Likewise.
+	(AARCH64_FL_V9_2): Likewise.
+	(AARCH64_FL_V9_3): Likewise.
+	(AARCH64_FL_FOR_ARCH9_1): Likewise.
+	(AARCH64_FL_FOR_ARCH9_2): Likewise.
+	(AARCH64_FL_FOR_ARCH9_3): Likewise.
+	(AARCH64_ISA_V9_1): Likewise.
+	(AARCH64_ISA_V9_2): Likewise.
+	(AARCH64_ISA_V9_3): Likewise.
+	* doc/invoke.texi (AArch64 Options): Document armv9.1-a, armv9.2-a,
+	armv9.3-a values to -march.
+
+2022-09-26  Martin Liska  <mliska@suse.cz>
+
+	* value-range.cc (tree_compare): Remove unused function.
+
+2022-09-26  Kewen Lin  <linkw@linux.ibm.com>
+
+	PR target/96072
+	* config/rs6000/rs6000-logue.cc (rs6000_emit_epilogue): Update the
+	condition for adding REG_CFA_DEF_CFA reg note with
+	frame_pointer_needed_indeed.
+
+2022-09-26  Kewen Lin  <linkw@linux.ibm.com>
+
+	PR target/100645
+	* config/rs6000/vector.md (vec_shr_<mode>): Replace condition
+	TARGET_ALTIVEC with VECTOR_UNIT_ALTIVEC_OR_VSX_P.
+
+2022-09-26  Hongtao Liu  <hongtao.liu@intel.com>
+	    Liwei Xu  <liwei.xu@intel.com>
+
+	PR target/53346
+	* config/i386/i386-expand.cc (expand_vec_perm_shufps_shufps):
+	New function.
+	(ix86_expand_vec_perm_const_1): Insert
+	expand_vec_perm_shufps_shufps at the end of 2-instruction
+	expand sequence.
+
+2022-09-25  Torbjörn SVENSSON  <torbjorn.svensson@foss.st.com>
+
+	* doc/sourcebuild.texi: Fix chapter level.
+
+2022-09-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/107001
+	* omp-low.cc (lower_omp_taskgroup): Don't add GOMP_RETURN statement
+	at the end.
+	* omp-expand.cc (build_omp_regions_1): Clarify GF_OMP_TARGET_KIND_DATA
+	is not stand-alone directive.  For GIMPLE_OMP_TASKGROUP, also don't
+	update parent.
+	(omp_make_gimple_edges) <case GIMPLE_OMP_TASKGROUP>: Reset
+	cur_region back after new_omp_region.
+
+2022-09-23  Vineet Gupta  <vineetg@rivosinc.com>
+
+	* config/riscv/riscv.h (LOCAL_SYM_P): New.
+	(USE_LOAD_ADDRESS_MACRO): Simplify by calling LOCAL_SYM_P.
+
+2022-09-23  zhongjuzhe  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-modes.def (VECTOR_BOOL_MODE): Add RVV mask modes.
+	(ADJUST_NUNITS): Adjust nunits using riscv_vector_chunks.
+	(ADJUST_ALIGNMENT): Adjust alignment.
+	(ADJUST_BYTESIZE): Adjust bytesize using riscv_vector_chunks.
+	(RVV_MODES): New macro.
+	(VECTOR_MODE_WITH_PREFIX): Add RVV vector modes.
+	(VECTOR_MODES_WITH_PREFIX): Add RVV vector modes.
+
+2022-09-23  zhongjuzhe  <juzhe.zhong@rivai.ai>
+
+	* common/config/riscv/riscv-common.cc: Change "static void" to "void".
+	* config.gcc: Add riscv-selftests.o
+	* config/riscv/predicates.md: Allow const_poly_int.
+	* config/riscv/riscv-protos.h (riscv_reinit): New function.
+	(riscv_parse_arch_string): change as exten function.
+	(riscv_run_selftests): New function.
+	* config/riscv/riscv.cc (riscv_cannot_force_const_mem): Don't allow poly
+	into const pool.
+	(riscv_report_v_required): New function.
+	(riscv_expand_op): New function.
+	(riscv_expand_mult_with_const_int): New function.
+	(riscv_legitimize_poly_move): Ditto.
+	(riscv_legitimize_move): New function.
+	(riscv_hard_regno_mode_ok): Add VL/VTYPE register allocation and fix
+	vector RA.
+	(riscv_convert_vector_bits): Fix riscv_vector_chunks configuration for
+	-marh no 'v'.
+	(riscv_reinit): New function.
+	(TARGET_RUN_TARGET_SELFTESTS): New target hook support.
+	* config/riscv/t-riscv: Add riscv-selftests.o.
+	* config/riscv/riscv-selftests.cc: New file.
+
+2022-09-23  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/106922
+	* tree-ssa-sccvn.cc (vn_reference_lookup_3): Allow
+	an arbitrary number of same valued skipped stores.
+
+2022-09-23  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range.cc (frange::set): Swap setters such that the one
+	accepting REAL_VALUE_TYPE does all the work.
+
+2022-09-23  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64-cores.def (neoverse-v2): New entry.
+	(demeter): Update tunings to neoversev2.
+	* config/aarch64/aarch64-tune.md: Regenerate.
+	* config/aarch64/aarch64.cc (demeter_addrcost_table): Rename to
+	neoversev2_addrcost_table.
+	(demeter_regmove_cost): Rename to neoversev2_addrcost_table.
+	(demeter_advsimd_vector_cost): Rename to neoversev2_advsimd_vector_cost.
+	(demeter_sve_vector_cost): Rename to neoversev2_sve_vector_cost.
+	(demeter_scalar_issue_info): Rename to neoversev2_scalar_issue_info.
+	(demeter_advsimd_issue_info): Rename to neoversev2_advsimd_issue_info.
+	(demeter_sve_issue_info): Rename to neoversev2_sve_issue_info.
+	(demeter_vec_issue_info): Rename to neoversev2_vec_issue_info.
+	Update references to above.
+	(demeter_vector_cost): Rename to neoversev2_vector_cost.
+	(demeter_tunings): Rename to neoversev2_tunings.
+	(aarch64_vec_op_count::rename_cycles_per_iter): Use
+	neoversev2_sve_issue_info instead of demeter_sve_issue_info.
+	* doc/invoke.texi (AArch64 Options): Document neoverse-v2.
+
+2022-09-23  Aldy Hernandez  <aldyh@redhat.com>
+
+	* range-op-float.cc (build_le): Use vrp_val_*.
+	(build_lt): Same.
+	(build_ge): Same.
+	(build_gt): Same.
+	* value-range.cc (frange::set): Chop ranges outside of the
+	representable numbers for -ffinite-math-only.
+	(frange::normalize_kind): Use vrp_val*.
+	(frange::verify_range): Same.
+	(frange::set_nonnegative): Same.
+	(range_tests_floats): Remove tests that depend on -INF and +INF.
+	* value-range.h (real_max_representable): Add prototype.
+	(real_min_representable): Same.
+	(vrp_val_max): Set max representable number for
+	-ffinite-math-only.
+	(vrp_val_min): Same but for min.
+	(frange::set_varying): Use vrp_val*.
+
+2022-09-23  Aldy Hernandez  <aldyh@redhat.com>
+
+	* real.cc (debug): New.
+
+2022-09-23  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range-pretty-print.cc (vrange_printer::print_real_value): New.
+	(vrange_printer::visit): Call print_real_value.
+	* value-range-pretty-print.h: New print_real_value.
+
+2022-09-23  Martin Liska  <mliska@suse.cz>
+
+	* common.opt: Update -flto-compression-level documentation.
+	* opts.cc (print_filtered_help): Do not append range to an
+	  option that uses \t syntax.
+
+2022-09-23  Jakub Jelinek  <jakub@redhat.com>
+
+	* attribs.cc (decl_attributes): Improve diagnostics, instead of
+	saying expected between 1 and 1, found 2 just say expected 1, found 2.
+
+2022-09-23  Hu, Lin1  <lin1.hu@intel.com>
+
+	PR target/94962
+	* config/i386/constraints.md (BH): New define_constraint.
+	* config/i386/i386.cc (standard_sse_constant_p): Add return
+	3/4 when operand matches new predicate.
+	(standard_sse_constant_opcode): Add new alternative branch to
+	return "vpcmpeqd".
+	* config/i386/predicates.md
+	(vector_all_ones_zero_extend_half_operand): New define_predicate.
+	(vector_all_ones_zero_extend_quarter_operand): Ditto.
+	* config/i386/sse.md: Add constraint to insn "mov<mode>_internal".
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_range_op): Handle no operands.
+	(range_of_call): Do not check for builtins.
+	(fold_using_range::range_of_builtin_call): Delete.
+	(fold_using_range::range_of_builtin_int_call): Delete.
+	* gimple-range-fold.h: Adjust prototypes.
+	* gimple-range-op.cc (class cfn_parity): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_builtin_int_call): Remove case
+	for CFN_GOACC_DIM_*.
+	* gimple-range-op.cc (class cfn_goacc_dim): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_builtin_int_call): Remove case
+	for CFN_BUILT_IN_STRLEN.
+	* gimple-range-op.cc (class cfn_strlen): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_builtin_ubsan_call): Delete.
+	(range_of_builtin_int_call): Remove cases for
+	CFN_BUILT_IN_UBSAN_CHECK.
+	* gimple-range-op.cc (class cfn_ubsan): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_builtin_int_call): Remove case
+	for CFN_BUILT_IN_CLRSB.
+	* gimple-range-op.cc (class cfn_clrsb): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_builtin_int_call): Remove case
+	for CFN_CTZ.
+	* gimple-range-op.cc (class cfn_ctz): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_builtin_int_call): Remove case
+	for CFN_CLZ.
+	* gimple-range-op.cc (class cfn_clz): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_builtin_int_call): Remove case
+	for CFN_FFS and CFN_POPCOUNT.
+	* gimple-range-op.cc (class cfn_pocount): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (get_letter_range): Move to new class.
+	(range_of_builtin_int_call): Remove case for CFN_BUILT_IN_TOUPPER
+	and CFN_BUILT_IN_TOLOWER.
+	* gimple-range-op.cc (class cfn_toupper_tolower): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_builtin_int_call): Remove case
+	for CFN_BUILT_IN_SIGNBIT.
+	* gimple-range-op.cc (class cfn_signbit): New.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc
+	(fold_using_range::range_of_builtin_int_call): Remove case for
+	CFN_BUILT_IN_CONSTANT_P.
+	* gimple-range-op.cc (gimple_range_op_handler::supported_p):
+	Check if a call also creates a range-op object.
+	(gimple_range_op_handler): Also check builtin calls.
+	(class cfn_constant_float_p): New.  Float CFN_BUILT_IN_CONSTANT_P.
+	(class cfn_constant_p): New.  Integral CFN_BUILT_IN_CONSTANT_P.
+	(gimple_range_op_handler::maybe_builtin_call): Set arguments and
+	handler for supported built-in calls.
+	* gimple-range-op.h (maybe_builtin_call): New prototype.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (range_of_range_op): Set result to
+	VARYING if the call to fold_range fails.
+	* tree-data-ref.cc (compute_distributive_range): Ditto.
+	* tree-vrp.cc (range_fold_binary_expr): Ditto.
+	(range_fold_unary_expr): Ditto.
+	* value-query.cc (range_query::get_tree_range): Ditto.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* range-op-float.cc (range_operator_float::fold_range): New base
+	  method for "int = float op int".
+	* range-op.cc (range_op_handler::fold_range): New case.
+	* range-op.h: Update prototypes.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-op.cc (gimple_range_op_handler::calc_op1): Use
+	  operand 1 for second range if there is no operand 2.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* Makefile.in (OBJS): Add gimple-range-op.o.
+	* gimple-range-edge.cc (gimple_outgoing_range_stmt_p): Use
+	gimple_range_op_handler.
+	* gimple-range-fold.cc (gimple_range_base_of_assignment): Move
+	to a method in gimple_range_op_handler.
+	(gimple_range_operand1): Ditto.
+	(gimple_range_operand2): Ditto.
+	(fold_using_range::fold_stmt): Use gimple_range_op_handler.
+	(fold_using_range::range_of_range_op): Ditto.
+	(fold_using_range::relation_fold_and_or): Ditto.
+	(fur_source::register_outgoing_edges): Ditto.
+	(gimple_range_ssa_names): Relocate to gimple-range-op.cc.
+	* gimple-range-fold.h: Adjust prototypes.
+	* gimple-range-gori.cc (gimple_range_calc_op1): Move
+	to a method in gimple_range_op_handler.
+	(gimple_range_calc_op2): Ditto.
+	(gori_compute::compute_operand_range): Use
+	gimple_range_op_handler.
+	(gori_compute::compute_logical_operands): Ditto.
+	(compute_operand1_range): Ditto.
+	(gori_compute::compute_operand2_range): Ditto.
+	(gori_compute::compute_operand1_and_operand2_range): Ditto.
+	* gimple-range-gori.h: Adjust protoypes.
+	* gimple-range-op.cc: New.  Supply gimple_range_op_handler methods.
+	* gimple-range-op.h: New.  Supply gimple_range_op_handler class.
+	* gimple-range.cc (gimple_ranger::prefill_name): Use
+	gimple_range_op_handler.
+	(gimple_ranger::prefill_stmt_dependencies): Ditto.
+	* gimple-range.h: Include gimple-range-op.h.
+	* range-op.cc (range_op_handler::range_op_handler): Adjust and
+	remove gimple * parameter option.
+	* range-op.h: Adjust prototypes.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* range-op.cc (range_op_handler::set_op_handler): Set new fields.
+	(ange_op_handler::range_op_handler): Likewise.
+	(range_op_handler::operator bool): Remove.
+	(range_op_handler::fold_range): Use appropriate handler.
+	(range_op_handler::op1_range): Likewise.
+	(range_op_handler::op2_range): Likewise.
+	(range_op_handler::lhs_op1_relation): Likewise.
+	(range_op_handler::lhs_op2_relation): Likewise.
+	(range_op_handler::op1_op2_relation): Likewise.
+	* range-op.h (class range_op_handler): Store handler pointers.
+	(range_op_handler:: operator bool): Inline.
+
+2022-09-22  Andrew MacLeod  <amacleod@redhat.com>
+
+	* tree-ssa-threadbackward.cc
+	  (back_threader::find_paths_to_names): Replace sequence with
+	  a call to gimple_range_ssa_names.
+
+2022-09-22  Martin Liska  <mliska@suse.cz>
+	    Fangrui Song  <i@maskray.me>
+
+	* configure: Regenerate.
+	* configure.ac: Simplify to gcc_cv_ld_compress_debug={0,1}
+	and gcc_cv_as_compress_debug={0,1}.
+	* doc/invoke.texi: Document the removal.
+	* gcc.cc (LINK_COMPRESS_DEBUG_SPEC): Simplify and ignore
+	  zlib-gnu.
+	(ASM_COMPRESS_DEBUG_SPEC): Likewise.
+
+2022-09-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/106922
+	* tree-ssa-sccvn.cc (vn_walk_cb_data::same_val): New member.
+	(vn_walk_cb_data::finish): Perform delayed verification of
+	a skipped may-alias.
+	(vn_reference_lookup_pieces): Likewise.
+	(vn_reference_lookup): Likewise.
+	(vn_reference_lookup_3): When skipping stores of the same
+	value also handle constant stores that are more than a
+	single VDEF away by delaying the verification.
+
+2022-09-22  Max Filippov  <jcmvbkbc@gmail.com>
+
+	* config/xtensa/xtensa.cc (TARGET_MAX_ANCHOR_OFFSET): New
+	definition.
+
+2022-09-22  Max Filippov  <jcmvbkbc@gmail.com>
+
+	* config/xtensa/xtensa.cc (xtensa_can_output_mi_thunk)
+	(xtensa_output_mi_thunk): New functions.
+	(TARGET_ASM_CAN_OUTPUT_MI_THUNK)
+	(TARGET_ASM_OUTPUT_MI_THUNK): New macro definitions.
+	(xtensa_prepare_expand_call): Use fixed register a8 as temporary
+	when called with reload_completed set to 1.
+
+2022-09-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/99407
+	* tree-ssa-dse.cc (dse_stmt_to_dr_map): New global.
+	(dse_classify_store): Use data-ref analysis to disambiguate more uses.
+	(pass_dse::use_dr_analysis_p): New pass parameter.
+	(pass_dse::set_pass_param): Implement.
+	(pass_dse::execute): Allocate and deallocate dse_stmt_to_dr_map.
+	* passes.def: Allow DR analysis for the DSE pass before loop.
+
+2022-09-22  Richard Biener  <rguenther@suse.de>
+
+	* tree-ssa-sccvn.cc (can_track_predicate_on_edge): New
+	function split out from ...
+	(vn_nary_op_insert_pieces_predicated): ... here.
+
+2022-09-22  liuhongt  <hongtao.liu@intel.com>
+
+	PR target/106994
+	* config/i386/mmx.md (floorv2sf2): Fix typo, use
+	register_operand instead of vector_operand for operands[1].
+
+2022-09-21  Aldy Hernandez  <aldyh@redhat.com>
+
+	PR tree-optimization/106967
+	* value-range.cc (frange::set): Set known NANs to undefined for
+	flag_finite_math_only.
+
+2022-09-21  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range.cc (frange::combine_zeros): Call set_undefined.
+	(frange::intersect_nans): Same.
+	(frange::intersect): Same.
+	(frange::verify_range): Undefined ranges do not have a type.
+	* value-range.h (frange::set_undefined): Clear NAN flags and type.
+
+2022-09-21  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/106984
+	* tsan.cc (instrument_builtin_call): Build the COND_EXPR condition in
+	a separate statement.
+
+2022-09-21  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64.h (HAVE_LOCAL_CPU_DETECT,
+	EXTRA_SPEC_FUNCTIONS, MCPU_MTUNE_NATIVE_SPECS): Move definitions up before
+	OPTION_DEFAULT_SPECS.
+	(MCPU_MTUNE_NATIVE_SPECS): Pass "cpu" to
+	local_cpu_detect when rewriting -march=native and no -mcpu or -mtune
+	is given.
+	(CONFIG_TUNE_SPEC): Define.
+	(OPTION_DEFAULT_SPECS): Use CONFIG_TUNE_SPEC for "tune".
+
+2022-09-21  Aldy Hernandez  <aldyh@redhat.com>
+
+	PR tree-optimization/106967
+	* range-op-float.cc (foperator_equal::fold_range): Adjust for NAN.
+	(foperator_equal::op1_range): Same.
+	(foperator_not_equal::fold_range): Same.
+	(foperator_not_equal::op1_range): Same.
+	(foperator_lt::fold_range): Same.
+	(foperator_lt::op1_range): Same.
+	(foperator_lt::op2_range): Same.
+	(foperator_le::fold_range): Same.
+	(foperator_le::op1_range): Same.
+	(foperator_le::op2_range): Same.
+	(foperator_gt::fold_range): Same.
+	(foperator_gt::op1_range): Same.
+	(foperator_gt::op2_range): Same.
+	(foperator_ge::fold_range): Same.
+	(foperator_ge::op1_range): Same.
+	(foperator_ge::op2_range): Same.
+	(foperator_unordered::op1_range): Same.
+	(foperator_ordered::fold_range): Same.
+	(foperator_ordered::op1_range): Same.
+	(build_le): Assert that we don't have a NAN.
+	(build_lt): Same.
+	(build_gt): Same.
+	(build_ge): Same.
+
+2022-09-21  liuhongt  <hongtao.liu@intel.com>
+
+	PR tree-optimization/106963
+	* tree-vect-loop.cc (vect_create_nonlinear_iv_init): Use
+	vec_gen_perm_mask_any instead of vec_gen_perm_mask_check.
+
+2022-09-20  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range.h (frange::maybe_isnan): Return false for
+	undefined ranges.
+
+2022-09-20  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range.cc (frange::set_nonnegative): Set +NAN.
+	(range_tests_signed_zeros): New test.
+	* value-range.h (frange::update_nan): New overload to set NAN sign.
+
+2022-09-20  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/106491
+	* config/aarch64/aarch64-sve-builtins.cc (scalar_types)
+	(acle_vector_types, acle_svpattern, acle_svprfop): Add GTY
+	markup to (new) extern declarations instead of to the main
+	definition.
+
+2022-09-20  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/106794
+	PR tree-optimization/106914
+	* tree-vect-slp.cc (vect_optimize_slp_pass::internal_node_cost):
+	Only consider loads that already have a permutation.
+	(vect_optimize_slp_pass::start_choosing_layouts): Assert that
+	loads with permutations are leaf nodes.  Prevent any kind of grouped
+	access from changing layout if it doesn't have a load permutation.
+
+2022-09-20  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-data-refs.cc (vect_check_gather_scatter): Restrict
+	early-out optimisation to SSA_NAMEs.
+
+2022-09-20  Martin Liska  <mliska@suse.cz>
+
+	* ctfc.cc (ctf_add_string): Replace "the the" with "the".
+	* doc/md.texi: Likewise.
+	* gimple-range-infer.cc (non_null_loadstore): Likewise.
+
+2022-09-20  liuhongt  <hongtao.liu@intel.com>
+
+	PR target/106910
+	* config/i386/mmx.md (nearbyintv2sf2): New expander.
+	(rintv2sf2): Ditto.
+	(ceilv2sf2): Ditto.
+	(lceilv2sfv2si2): Ditto.
+	(floorv2sf2): Ditto.
+	(lfloorv2sfv2si2): Ditto.
+	(btruncv2sf2): Ditto.
+	(lrintv2sfv2si2): Ditto.
+	(roundv2sf2): Ditto.
+	(lroundv2sfv2si2): Ditto.
+	(*mmx_roundv2sf2): New define_insn.
+
+2022-09-20  konglin1  <lingling.kong@intel.com>
+
+	PR middle-end/105735
+	* tree-scalar-evolution.cc
+	(analyze_and_compute_bitop_with_inv_effect): New function.
+	(final_value_replacement_loop): Enhanced to handle bitop
+	with inv induction.
+
+2022-09-20  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/gnu-user.h (GNU_USER_TARGET_LINK_SPEC): For
+	-static-pie, pass -static -pie --no-dynamic-linker -z text to
+	the linker, and do not pass --dynamic-linker.
+
+2022-09-20  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range.cc (frange::flush_denormals_to_zero): New.
+	(frange::set): Call flush_denormals_to_zero.
+	* value-range.h (class frange): Add flush_denormals_to_zero.
+
+2022-09-20  liuhongt  <hongtao.liu@intel.com>
+
+	* config/i386/x86-tune-sched.cc (ix86_issue_rate): Adjust for
+	latest Intel processors.
+
+2022-09-20  konglin1  <lingling.kong@intel.com>
+
+	PR target/106887
+	* config/i386/i386-expand.cc (ix86_expand_vector_init_duplicate):
+	Fixed V16BF mode case.
+
+2022-09-19  Torbjörn SVENSSON  <torbjorn.svensson@foss.st.com>
+
+	* targhooks.cc (default_zero_call_used_regs): Improve sorry
+	message.
+
+2022-09-18  Julian Brown  <julian@codesourcery.com>
+
+	* gimplify.cc (omp_segregate_mapping_groups): Update comment.
+	(gimplify_adjust_omp_clauses): Move ATTACH and
+	ATTACH_ZERO_LENGTH_ARRAY_SECTION nodes to the end of the clause list
+	for offloaded OpenMP regions.
+
+2022-09-18  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/106831
+	* value-range.cc (frange::singleton_p): Avoid propagating long
+	doubles that may have multiple representations.
+
+2022-09-18  Aldy Hernandez  <aldyh@redhat.com>
+
+	* range-op-float.cc (frange_add_zeros): Replace set_signbit with
+	union of zero.
+	* value-query.cc (range_query::get_tree_range): Remove set_signbit
+	use.
+	* value-range-pretty-print.cc (vrange_printer::print_frange_prop):
+	Remove.
+	(vrange_printer::print_frange_nan): New.
+	* value-range-pretty-print.h (print_frange_prop): Remove.
+	(print_frange_nan): New.
+	* value-range-storage.cc (frange_storage_slot::set_frange): Set
+	kind and NAN fields.
+	(frange_storage_slot::get_frange): Restore kind and NAN fields.
+	* value-range-storage.h (class frange_storage_slot): Add kind and
+	NAN fields.
+	* value-range.cc (frange::update_nan): Remove.
+	(frange::set_signbit): Remove.
+	(frange::set): Adjust for NAN fields.
+	(frange::normalize_kind): Remove m_props.
+	(frange::combine_zeros): New.
+	(frange::union_nans): New.
+	(frange::union_): Handle new NAN fields.
+	(frange::intersect_nans): New.
+	(frange::intersect): Handle new NAN fields.
+	(frange::operator=): Same.
+	(frange::operator==): Same.
+	(frange::contains_p): Same.
+	(frange::singleton_p): Remove special case for signed zeros.
+	(frange::verify_range): Adjust for new NAN fields.
+	(frange::set_zero): Handle signed zeros.
+	(frange::set_nonnegative): Same.
+	(range_tests_nan): Adjust tests.
+	(range_tests_signed_zeros): Same.
+	(range_tests_signbit): Same.
+	(range_tests_floats): Same.
+	* value-range.h (class fp_prop): Remove.
+	(FP_PROP_ACCESSOR): Remove.
+	(class frange_props): Remove
+	(frange::lower_bound): NANs don't have endpoints.
+	(frange::upper_bound): Same.
+	(frange_props::operator==): Remove.
+	(frange_props::union_): Remove.
+	(frange_props::intersect): Remove.
+	(frange::update_nan): New.
+	(frange::clear_nan): New.
+	(frange::undefined_p): New.
+	(frange::set_nan): New.
+	(frange::known_finite): Adjust for new NAN representation.
+	(frange::maybe_isnan): Same.
+	(frange::known_isnan): Same.
+	(frange::signbit_p): Same.
+	* gimple-range-fold.cc (range_of_builtin_int_call): Rename
+	known_signbit_p into signbit_p.
+
+2022-09-17  Jan-Benedict Glaw  <jbglaw@lug-owl.de>
+
+	* config/csky/csky.h (FUNCTION_ARG_REGNO_P): Cast REGNO to (int)
+	to prevent warning.
+
+2022-09-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/106958
+	* tree-ssa-reassoc.cc (optimize_range_tests_cmp_bitwise): If
+	id >= l, cast op to type1, otherwise to pointer_sized_int_node.
+	If type has pointer type, cast exp to pointer_sized_int_node
+	even when id < l.
+
+2022-09-16  liuhongt  <hongtao.liu@intel.com>
+
+	PR target/106910
+	* config/i386/i386-builtins.cc
+	(ix86_builtin_vectorized_function): Modernized with
+	corresponding expanders.
+	* config/i386/sse.md (lrint<mode><sseintvecmodelower>2): New
+	expander.
+	(floor<mode>2): Ditto.
+	(lfloor<mode><sseintvecmodelower>2): Ditto.
+	(ceil<mode>2): Ditto.
+	(lceil<mode><sseintvecmodelower>2): Ditto.
+	(btrunc<mode>2): Ditto.
+	(lround<mode><sseintvecmodelower>2): Ditto.
+	(exp2<mode>2): Ditto.
+
+2022-09-15  Joseph Myers  <joseph@codesourcery.com>
+
+	* ginclude/float.h (INFINITY): Define only if
+	[__FLT_HAS_INFINITY__].
+
+2022-09-15  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/106922
+	* tree-ssa-pre.cc (translate_vuse_through_block): Only
+	keep the VUSE if its def dominates PHIBLOCK.
+	(prune_clobbered_mems): Rewrite logic so we check whether
+	a value dies in a block when the VUSE def doesn't dominate it.
+
+2022-09-15  Richard Biener  <rguenther@suse.de>
+
+	* tree.cc (build_common_tree_nodes): Initialize void_list_node
+	here.
+
+2022-09-15  Jiufu Guo  <guojiufu@linux.ibm.com>
+
+	PR target/106550
+	* config/rs6000/rs6000.cc (rs6000_emit_set_long_const): Use pli.
+
+2022-09-14  Aldy Hernandez  <aldyh@redhat.com>
+
+	* range-op-float.cc (frange_add_zeros): New.
+	(build_le): Call frange_add_zeros.
+	(build_ge): Same.
+	(foperator_equal::op1_range): Same.
+	(foperator_not_equal::op1_range): Same.
+
+2022-09-14  Aldy Hernandez  <aldyh@redhat.com>
+
+	* range-op-float.cc (build_le): Accept frange instead of number.
+	(build_lt): Same.
+	(build_ge): Same.
+	(build_gt): Same.
+	(foperator_lt::op1_range): Pass full range to build_*.
+	(foperator_lt::op2_range): Same.
+	(foperator_le::op1_range): Same.
+	(foperator_le::op2_range): Same.
+	(foperator_gt::op1_range): Same.
+	(foperator_gt::op2_range): Same.
+	(foperator_ge::op1_range): Same.
+	(foperator_ge::op2_range): Same.
+
+2022-09-14  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range.cc (frange::set): Use set_nan.
+	* value-range.h (frange::set_nan): Inline code originally in
+	set().
+
+2022-09-14  Aldy Hernandez  <aldyh@redhat.com>
+
+	* range-op-float.cc (frange_set_nan): Remove.
+	(build_lt): Use set_nan, update_nan, clear_nan.
+	(build_gt): Same.
+	(foperator_equal::op1_range): Same.
+	(foperator_not_equal::op1_range): Same.
+	(foperator_lt::op1_range): Same.
+	(foperator_lt::op2_range): Same.
+	(foperator_le::op1_range): Same.
+	(foperator_le::op2_range): Same.
+	(foperator_gt::op1_range): Same.
+	(foperator_gt::op2_range): Same.
+	(foperator_ge::op1_range): Same.
+	(foperator_ge::op2_range): Same.
+	(foperator_unordered::op1_range): Same.
+	(foperator_ordered::op1_range): Same.
+	* value-query.cc (range_query::get_tree_range): Same.
+	* value-range.cc (frange::set_nan): Same.
+	(frange::update_nan): Same.
+	(frange::union_): Same.
+	(frange::intersect): Same.
+	(range_tests_nan): Same.
+	(range_tests_signed_zeros): Same.
+	(range_tests_signbit): Same.
+	(range_tests_floats): Same.
+	* value-range.h (class frange): Add update_nan and clear_nan.
+	(frange::set_nan): New.
+
+2022-09-14  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-query.cc (range_query::get_tree_range): Remove check for overflow.
+	* value-range-pretty-print.cc (vrange_printer::visit): Move read
+	of type until after undefined_p is checked.
+	* value-range.cc (frange::set): Remove asserts for REAL_CST.
+	(frange::contains_p): Tidy up.
+	(range_tests_nan):  Add comment.
+	* value-range.h (frange::type): Check for undefined_p.
+	(frange::set_undefined): Remove set of endpoints.
+
+2022-09-14  Julian Brown  <julian@codesourcery.com>
+
+	* gimplify.cc (omp_group_last): Allow GOMP_MAP_ATTACH_DETACH after
+	GOMP_MAP_STRUCT (for reindexing).
+	(omp_gather_mapping_groups): Reimplement using...
+	(omp_gather_mapping_groups_1): This new function.  Stop processing at
+	GATHER_SENTINEL.
+	(omp_group_base): Allow GOMP_MAP_TO_PSET without any following node.
+	(omp_index_mapping_groups): Reimplement using...
+	(omp_index_mapping_groups_1): This new function.  Handle
+	REINDEX_SENTINEL.
+	(omp_reindex_mapping_groups, omp_mapped_by_containing_struct): New
+	functions.
+	(omp_tsort_mapping_groups_1): Adjust handling of base group being the
+	same as current group.  Use omp_mapped_by_containing_struct.
+	(omp_build_struct_sibling_lists): Use omp_mapped_by_containing_struct
+	and omp_reindex_mapping_groups.  Robustify group deletion for reordered
+	lists.
+	(gimplify_scan_omp_clauses): Update calls to
+	omp_build_struct_sibling_lists.
+
+2022-09-14  Julian Brown  <julian@codesourcery.com>
+
+	* gimplify.cc (gimplify_omp_var_data): Remove GOVD_MAP_HAS_ATTACHMENTS.
+	(GOMP_FIRSTPRIVATE_IMPLICIT): Renumber.
+	(insert_struct_comp_map): Refactor function into...
+	(build_omp_struct_comp_nodes): This new function.  Remove list handling
+	and improve self-documentation.
+	(extract_base_bit_offset): Remove BASE_REF, OFFSETP parameters.  Move
+	code to strip outer parts of address out of function, but strip no-op
+	conversions.
+	(omp_mapping_group): Add DELETED field for use during reindexing.
+	(omp_strip_components_and_deref, omp_strip_indirections): New functions.
+	(omp_group_last, omp_group_base): Add GOMP_MAP_STRUCT handling.
+	(omp_gather_mapping_groups): Initialise DELETED field for new groups.
+	(omp_index_mapping_groups): Notice DELETED groups when (re)indexing.
+	(omp_siblist_insert_node_after, omp_siblist_move_node_after,
+	omp_siblist_move_nodes_after, omp_siblist_move_concat_nodes_after): New
+	helper functions.
+	(omp_accumulate_sibling_list): New function to build up GOMP_MAP_STRUCT
+	node groups for sibling lists. Outlined from gimplify_scan_omp_clauses.
+	(omp_build_struct_sibling_lists): New function.
+	(gimplify_scan_omp_clauses): Remove struct_map_to_clause,
+	struct_seen_clause, struct_deref_set.  Call
+	omp_build_struct_sibling_lists as pre-pass instead of handling sibling
+	lists in the function's main processing loop.
+	(gimplify_adjust_omp_clauses_1): Remove GOVD_MAP_HAS_ATTACHMENTS
+	handling, unused now.
+	* omp-low.cc (scan_sharing_clauses): Handle pointer-type indirect
+	struct references, and references to pointers to structs also.
+
+2022-09-14  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/106938
+	* tree-cfg.cc (execute_fixup_cfg): Purge dead abnormal
+	edges for all last stmts in a block.  Do EH cleanup
+	only on the last stmt in a block.
+
+2022-09-14  Aldy Hernandez  <aldyh@redhat.com>
+
+	PR tree-optimization/106936
+	* value-query.cc (range_query::get_value_range): Remove assert.
+
+2022-09-14  Jan-Benedict Glaw  <jbglaw@lug-owl.de>
+
+	* config/mips/mips.cc (mips_option_override): Drop unused variable.
+
+2022-09-14  Julian Brown  <julian@codesourcery.com>
+
+	* gimplify.cc (is_or_contains_p, omp_target_reorder_clauses): Delete
+	functions.
+	(omp_tsort_mark): Add enum.
+	(omp_mapping_group): Add struct.
+	(debug_mapping_group, omp_get_base_pointer, omp_get_attachment,
+	omp_group_last, omp_gather_mapping_groups, omp_group_base,
+	omp_index_mapping_groups, omp_containing_struct,
+	omp_tsort_mapping_groups_1, omp_tsort_mapping_groups,
+	omp_segregate_mapping_groups, omp_reorder_mapping_groups): New
+	functions.
+	(gimplify_scan_omp_clauses): Call above functions instead of
+	omp_target_reorder_clauses, unless we've seen an error.
+	* omp-low.cc (scan_sharing_clauses): Avoid strict test if we haven't
+	sorted mapping groups.
+
+2022-09-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/106878
+	* tree-cfg.cc (verify_gimple_assign_binary): Disallow pointer,
+	reference or OFFSET_TYPE BIT_IOR_EXPR, BIT_XOR_EXPR or, unless
+	the second argument is INTEGER_CST, BIT_AND_EXPR.
+	* match.pd ((type) X op CST -> (type) (X op ((type-x) CST)),
+	(type) (((type2) X) op Y) -> (X op (type) Y)): Punt for
+	POINTER_TYPE_P or OFFSET_TYPE.
+	* tree-ssa-reassoc.cc (optimize_range_tests_cmp_bitwise): For
+	pointers cast them to pointer sized integers first.
+
+2022-09-14  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/106934
+	* tree-ssa.cc (non_rewritable_mem_ref_base): Avoid BIT_FIELD_REFs
+	of bitfields.
+	(maybe_rewrite_mem_ref_base): Likewise.
+
+2022-09-14  liuhongt  <hongtao.liu@intel.com>
+
+	PR tree-optimization/106905
+	* tree-vect-loop.cc (vectorizable_nonlinear_induction): Return
+	false when !vect_use_loop_mask_for_alignment_p (loop_vinfo) &&
+	LOOP_VINFO_PEELING_FOR_ALIGNMENT (loop_vinfo) < 0.
+
+2022-09-13  Roger Sayle  <roger@nextmovesoftware.com>
+
+	PR target/106877
+	* reg-stack.cc (move_for_stack_reg): Check for any_malformed_asm
+	in gcc_assert.
+
+2022-09-13  Max Filippov  <jcmvbkbc@gmail.com>
+
+	Revert:
+	2022-09-12  Takayuki 'January June' Suwa  <jjsuwa_sys3175@yahoo.co.jp>
+
+	* config/xtensa/xtensa.cc (TARGET_CONSTANT_OK_FOR_CPROP_P):
+	New macro definition.
+	(xtensa_constant_ok_for_cprop_p):
+	Implement the hook as mentioned above.
+
+2022-09-13  Kewen Lin  <linkw@linux.ibm.com>
+
+	PR target/104482
+	* config/rs6000/rs6000-c.cc (altivec_resolve_overloaded_builtin): Fix
+	the equality check for argument number, and move this hunk ahead.
+
+2022-09-13  Kewen.Lin  <linkw@gcc.gnu.org>
+
+	PR target/105485
+	* config/rs6000/rs6000-builtin.cc (rs6000_gimple_fold_builtin): Add
+	the handling for unresolved overloaded builtin function.
+	(rs6000_expand_builtin): Likewise.
+
+2022-09-13  Kewen Lin  <linkw@linux.ibm.com>
+
+	* config/rs6000/rs6000.cc (class rs6000_cost_data): Add new members
+	m_nstores, m_reduc_factor, m_gather_load and member function
+	determine_suggested_unroll_factor.
+	(rs6000_cost_data::update_target_cost_per_stmt): Update for m_nstores,
+	m_reduc_factor and m_gather_load.
+	(rs6000_cost_data::determine_suggested_unroll_factor): New function.
+	(rs6000_cost_data::finish_cost): Use determine_suggested_unroll_factor.
+	* config/rs6000/rs6000.opt (rs6000-vect-unroll-limit): New parameter.
+	(rs6000-vect-unroll-issue): Likewise.
+	(rs6000-vect-unroll-reduc-threshold): Likewise.
+	* doc/invoke.texi (rs6000-vect-unroll-limit): Document new parameter.
+
+2022-09-13  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/106909
+	* gimple-fold.cc (gimple_fold_call): Clear the ctrl-altering
+	flag of a unreachable call.
+
+2022-09-13  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/106913
+	* tree-ssa-uninit.cc (warn_uninitialized_vars): Do not set
+	ft_reachable on EXIT_BLOCK.
+
+2022-09-13  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64.cc (aarch64_classify_vector_mode): Use
+	TARGET_FLOAT instead of TARGET_SIMD.
+	(aarch64_vectorize_related_mode): Restrict ADVSIMD handling to
+	TARGET_SIMD.
+	(aarch64_hard_regno_mode_ok): Don't allow tuples of 2 64-bit vectors
+	in GPRs.
+	(aarch64_classify_address): Treat little-endian structure moves
+	like big-endian for TARGET_FLOAT && !TARGET_SIMD.
+	(aarch64_secondary_memory_needed): New function.
+	(aarch64_secondary_reload): Handle 128-bit Advanced SIMD vectors
+	in the same way as TF, TI and TD.
+	(aarch64_rtx_mult_cost): Restrict ADVSIMD handling to TARGET_SIMD.
+	(aarch64_rtx_costs): Likewise.
+	(aarch64_register_move_cost): Treat a pair of 64-bit vectors
+	separately from a single 128-bit vector.  Handle the cost implied
+	by aarch64_secondary_memory_needed.
+	(aarch64_simd_valid_immediate): Restrict ADVSIMD handling to
+	TARGET_SIMD.
+	(aarch64_expand_vec_perm_const_1): Likewise.
+	(TARGET_SECONDARY_MEMORY_NEEDED): New macro.
+	* config/aarch64/iterators.md (VTX): New iterator.
+	* config/aarch64/aarch64.md (arches): Add fp_q as a synonym of simd.
+	(arch_enabled): Adjust accordingly.
+	(@aarch64_reload_mov<TX:mode>): Extend to...
+	(@aarch64_reload_mov<VTX:mode>): ...this.
+	* config/aarch64/aarch64-simd.md (mov<mode>): Require TARGET_FLOAT
+	rather than TARGET_SIMD.
+	(movmisalign<mode>): Likewise.
+	(load_pair<DREG:mode><DREG2:mode>): Likewise.
+	(vec_store_pair<DREG:mode><DREG2:mode>): Likewise.
+	(load_pair<VQ:mode><VQ2:mode>): Likewise.
+	(vec_store_pair<VQ:mode><VQ2:mode>): Likewise.
+	(@aarch64_split_simd_mov<mode>): Likewise.
+	(aarch64_get_low<mode>): Likewise.
+	(aarch64_get_high<mode>): Likewise.
+	(aarch64_get_half<mode>): Likewise.  Canonicalize to a move for
+	lowpart extracts.
+	(*aarch64_simd_mov<VDMOV:mode>): Require TARGET_FLOAT rather than
+	TARGET_SIMD.  Use different w<-w and r<-w instructions for
+	!TARGET_SIMD.  Disable immediate moves for !TARGET_SIMD but
+	add an alternative specifically for w<-Z.
+	(*aarch64_simd_mov<VQMOV:mode>): Require TARGET_FLOAT rather than
+	TARGET_SIMD.  Likewise for the associated define_splits.  Disable
+	FPR moves and immediate moves for !TARGET_SIMD but add an alternative
+	specifically for w<-Z.
+	(aarch64_simd_mov_from_<mode>high): Require TARGET_FLOAT rather than
+	TARGET_SIMD.  Restrict the existing alternatives to TARGET_SIMD
+	but add a new r<-w one for !TARGET_SIMD.
+	(*aarch64_get_high<mode>): New pattern.
+	(load_pair_lanes<mode>): Require TARGET_FLOAT rather than TARGET_SIMD.
+	(store_pair_lanes<mode>): Likewise.
+	(*aarch64_combine_internal<mode>): Likewise.  Restrict existing
+	w<-w, w<-r and w<-m alternatives to TARGET_SIMD but add a new w<-r
+	alternative for !TARGET_SIMD.
+	(*aarch64_combine_internal_be<mode>): Likewise.
+	(aarch64_combinez<mode>): Require TARGET_FLOAT rather than TARGET_SIMD.
+	Remove bogus arch attribute.
+	(*aarch64_combinez_be<mode>): Likewise.
+	(@aarch64_vec_concat<mode>): Require TARGET_FLOAT rather than
+	TARGET_SIMD.
+	(aarch64_combine<mode>): Likewise.
+	(aarch64_rev_reglist<mode>): Likewise.
+	(mov<mode>): Likewise.
+	(*aarch64_be_mov<VSTRUCT_2D:mode>): Extend to TARGET_FLOAT &&
+	!TARGET_SIMD, regardless of endianness.  Extend associated
+	define_splits in the same way, both for this pattern and the
+	ones below.
+	(*aarch64_be_mov<VSTRUCT_2Qmode>): Likewise.  Restrict w<-w
+	alternative to TARGET_SIMD.
+	(*aarch64_be_movoi): Likewise.
+	(*aarch64_be_movci): Likewise.
+	(*aarch64_be_movxi): Likewise.
+	(*aarch64_be_mov<VSTRUCT_4QD:mode>): Extend to TARGET_FLOAT
+	&& !TARGET_SIMD, regardless of endianness.  Restrict w<-w alternative
+	to TARGET_SIMD for tuples of 128-bit vectors.
+	(*aarch64_be_mov<VSTRUCT_4QD:mode>): Likewise.
+	* config/aarch64/aarch64-ldpstp.md: Remove TARGET_SIMD condition
+	from DREG STP peephole.  Change TARGET_SIMD to TARGET_FLOAT in
+	the VQ and VP_2E LDP and STP peepholes.
+
+2022-09-13  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64-simd.md (movv8di): Remove TARGET_SIMD
+	condition.  Likewise for the related define_split.  Tweak formatting.
+
+2022-09-12  Takayuki 'January June' Suwa  <jjsuwa_sys3175@yahoo.co.jp>
+
+	* config/xtensa/xtensa.cc (TARGET_CONSTANT_OK_FOR_CPROP_P):
+	New macro definition.
+	(xtensa_constant_ok_for_cprop_p):
+	Implement the hook as mentioned above.
+
+2022-09-12  Joseph Myers  <joseph@codesourcery.com>
+
+	* ginclude/stdatomic.h [defined __STDC_VERSION__ &&
+	__STDC_VERSION__ > 201710L] (ATOMIC_VAR_INIT): Do not define.
+
+2022-09-12  Tobias Burnus  <tobias@codesourcery.com>
+
+	* config/nvptx/mkoffload.cc (process): Replace a fatal_error by
+	a warning + not enabling offloading if -misa=sm_30 prevents
+	reverse offload.
+	(main): Use tool_name as progname for diagnostic.
+	* config/gcn/mkoffload.cc (main): Likewise.
+
+2022-09-12  Aldy Hernandez  <aldyh@redhat.com>
+
+	* value-range.cc (frange::set_signbit): Avoid changing sign when
+	already in the correct sign.
+
+2022-09-12  Max Filippov  <jcmvbkbc@gmail.com>
+
+	* config/xtensa/xtensa.cc (xtensa_function_value_regno_p):
+	Recognize all 4 return registers.
+	* config/xtensa/xtensa.h (GP_RETURN_REG_COUNT): New definition.
+	* config/xtensa/xtensa.md (untyped_call): New pattern.
+
+2022-09-12  Jonathan Wakely  <jwakely@redhat.com>
+
+	* doc/extend.texi (Floating Types): Fix "_float128" typo.
+
 2022-09-10  Takayuki 'January June' Suwa  <jjsuwa_sys3175@yahoo.co.jp>
 
 	* config/xtensa/xtensa.cc (xtensa_constantsynth):

@@ -277,5 +277,3 @@ verify_type_context (location_t loc, type_context_kind context, const_tree type,
 }
 
 } // end namespace riscv_vector
-
-using namespace riscv_vector;

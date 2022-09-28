@@ -733,7 +733,22 @@ rs6000_init_builtins (void)
       if (TARGET_IEEEQUAD && TARGET_LONG_DOUBLE_128)
 	ieee128_float_type_node = long_double_type_node;
       else
-	ieee128_float_type_node = float128_type_node;
+	{
+	  /* For C we only need to register the __ieee128 name for
+	     it.  For C++, we create a distinct type which will mangle
+	     differently (u9__ieee128) vs. _Float128 (DF128_) and behave
+	     backwards compatibly.  */
+	  if (float128t_type_node == NULL_TREE)
+	    {
+	      float128t_type_node = make_node (REAL_TYPE);
+	      TYPE_PRECISION (float128t_type_node)
+		= TYPE_PRECISION (float128_type_node);
+	      layout_type (float128t_type_node);
+	      SET_TYPE_MODE (float128t_type_node,
+			     TYPE_MODE (float128_type_node));
+	    }
+	  ieee128_float_type_node = float128t_type_node;
+	}
       t = build_qualified_type (ieee128_float_type_node, TYPE_QUAL_CONST);
       lang_hooks.types.register_builtin_type (ieee128_float_type_node,
 					      "__ieee128");
@@ -1259,6 +1274,11 @@ rs6000_gimple_fold_builtin (gimple_stmt_iterator *gsi)
   tree arg0, arg1, lhs, temp;
   enum tree_code bcode;
   gimple *g;
+
+  /* For an unresolved overloaded builtin, return early here since there
+     is no builtin info for it and we are unable to fold it.  */
+  if (fn_code > RS6000_OVLD_NONE)
+    return false;
 
   size_t uns_fncode = (size_t) fn_code;
   enum insn_code icode = rs6000_builtin_info[uns_fncode].icode;
@@ -3256,6 +3276,14 @@ rs6000_expand_builtin (tree exp, rtx target, rtx /* subtarget */,
   tree fndecl = TREE_OPERAND (CALL_EXPR_FN (exp), 0);
   enum rs6000_gen_builtins fcode
     = (enum rs6000_gen_builtins) DECL_MD_FUNCTION_CODE (fndecl);
+
+  /* Emit error message if it's an unresolved overloaded builtin.  */
+  if (fcode > RS6000_OVLD_NONE)
+    {
+      error ("unresolved overload for builtin %qF", fndecl);
+      return const0_rtx;
+    }
+
   size_t uns_fcode = (size_t)fcode;
   enum insn_code icode = rs6000_builtin_info[uns_fcode].icode;
 

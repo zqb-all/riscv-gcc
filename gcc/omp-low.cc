@@ -1599,8 +1599,11 @@ scan_sharing_clauses (tree clauses, omp_context *ctx)
 	    {
 	      /* If this is an offloaded region, an attach operation should
 		 only exist when the pointer variable is mapped in a prior
-		 clause.  */
-	      if (is_gimple_omp_offloaded (ctx->stmt))
+		 clause.
+		 If we had an error, we may not have attempted to sort clauses
+		 properly, so avoid the test.  */
+	      if (is_gimple_omp_offloaded (ctx->stmt)
+		  && !seen_error ())
 		gcc_assert
 		  (maybe_lookup_decl (decl, ctx)
 		   || (is_global_var (maybe_lookup_decl_in_outer_ctx (decl, ctx))
@@ -1633,8 +1636,10 @@ scan_sharing_clauses (tree clauses, omp_context *ctx)
 	      if (TREE_CODE (decl) == COMPONENT_REF
 		  || (TREE_CODE (decl) == INDIRECT_REF
 		      && TREE_CODE (TREE_OPERAND (decl, 0)) == COMPONENT_REF
-		      && (TREE_CODE (TREE_TYPE (TREE_OPERAND (decl, 0)))
-			  == REFERENCE_TYPE)))
+		      && (((TREE_CODE (TREE_TYPE (TREE_OPERAND (decl, 0)))
+			    == REFERENCE_TYPE)
+			   || (TREE_CODE (TREE_TYPE (TREE_OPERAND (decl, 0)))
+			       == POINTER_TYPE)))))
 		break;
 	      if (DECL_SIZE (decl)
 		  && TREE_CODE (DECL_SIZE (decl)) != INTEGER_CST)
@@ -7626,6 +7631,7 @@ lower_oacc_reductions (location_t loc, tree clauses, tree level, bool inner,
 	      incoming = build_simple_mem_ref (incoming);
 	  }
 	else
+	  /* Note that 'var' might be a mem ref.  */
 	  v1 = v2 = v3 = var;
 
 	/* Determine position in reduction buffer, which may be used
@@ -7654,26 +7660,28 @@ lower_oacc_reductions (location_t loc, tree clauses, tree level, bool inner,
 	  = build_call_expr_internal_loc (loc, IFN_GOACC_REDUCTION,
 					  TREE_TYPE (var), 6, setup_code,
 					  unshare_expr (ref_to_res),
-					  incoming, level, op, off);
+					  unshare_expr (incoming),
+					  level, op, off);
 	tree init_call
 	  = build_call_expr_internal_loc (loc, IFN_GOACC_REDUCTION,
 					  TREE_TYPE (var), 6, init_code,
 					  unshare_expr (ref_to_res),
-					  v1, level, op, off);
+					  unshare_expr (v1), level, op, off);
 	tree fini_call
 	  = build_call_expr_internal_loc (loc, IFN_GOACC_REDUCTION,
 					  TREE_TYPE (var), 6, fini_code,
 					  unshare_expr (ref_to_res),
-					  v2, level, op, off);
+					  unshare_expr (v2), level, op, off);
 	tree teardown_call
 	  = build_call_expr_internal_loc (loc, IFN_GOACC_REDUCTION,
 					  TREE_TYPE (var), 6, teardown_code,
-					  ref_to_res, v3, level, op, off);
+					  ref_to_res, unshare_expr (v3),
+					  level, op, off);
 
-	gimplify_assign (v1, setup_call, &before_fork);
-	gimplify_assign (v2, init_call, &after_fork);
-	gimplify_assign (v3, fini_call, &before_join);
-	gimplify_assign (outgoing, teardown_call, &after_join);
+	gimplify_assign (unshare_expr (v1), setup_call, &before_fork);
+	gimplify_assign (unshare_expr (v2), init_call, &after_fork);
+	gimplify_assign (unshare_expr (v3), fini_call, &before_join);
+	gimplify_assign (unshare_expr (outgoing), teardown_call, &after_join);
       }
 
   /* Now stitch things together.  */
@@ -9719,7 +9727,6 @@ lower_omp_taskgroup (gimple_stmt_iterator *gsi_p, omp_context *ctx)
   gimple_bind_add_seq (bind, gimple_omp_body (stmt));
   gimple_omp_set_body (stmt, NULL);
 
-  gimple_bind_add_stmt (bind, gimple_build_omp_return (true));
   gimple_bind_add_seq (bind, dseq);
 
   pop_gimplify_context (bind);
@@ -14012,6 +14019,7 @@ lower_omp_target (gimple_stmt_iterator *gsi_p, omp_context *ctx)
 		if (OMP_CLAUSE_MAP_KIND (c) == GOMP_MAP_FIRSTPRIVATE_REFERENCE)
 		  is_ref = false;
 		bool ref_to_array = false;
+		bool ref_to_ptr = false;
 		if (is_ref)
 		  {
 		    type = TREE_TYPE (type);
@@ -14030,6 +14038,12 @@ lower_omp_target (gimple_stmt_iterator *gsi_p, omp_context *ctx)
 		    new_var = decl2;
 		    type = TREE_TYPE (new_var);
 		  }
+		else if (TREE_CODE (type) == REFERENCE_TYPE
+			 && TREE_CODE (TREE_TYPE (type)) == POINTER_TYPE)
+		  {
+		    type = TREE_TYPE (type);
+		    ref_to_ptr = true;
+		  }
 		x = build_receiver_ref (OMP_CLAUSE_DECL (prev), false, ctx);
 		x = fold_convert_loc (clause_loc, type, x);
 		if (!integer_zerop (OMP_CLAUSE_SIZE (c)))
@@ -14046,7 +14060,8 @@ lower_omp_target (gimple_stmt_iterator *gsi_p, omp_context *ctx)
 		if (ref_to_array)
 		  x = fold_convert_loc (clause_loc, TREE_TYPE (new_var), x);
 		gimplify_expr (&x, &new_body, NULL, is_gimple_val, fb_rvalue);
-		if (is_ref && !ref_to_array)
+		if ((is_ref && !ref_to_array)
+		    || ref_to_ptr)
 		  {
 		    tree t = create_tmp_var_raw (type, get_name (var));
 		    gimple_add_tmp_var (t);

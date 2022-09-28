@@ -1166,7 +1166,33 @@ same_line_p (location_t locus1, expanded_location *from, location_t locus2)
           && filename_cmp (from->file, to.file) == 0);
 }
 
-/* Assign discriminators to each basic block.  */
+/* Assign a unique discriminator value to all statements in block bb that
+   have the same line number as locus. */
+
+static void
+assign_discriminator (location_t locus, basic_block bb)
+{
+  gimple_stmt_iterator gsi;
+  int discriminator;
+
+  if (locus == UNKNOWN_LOCATION)
+    return;
+
+  expanded_location locus_e = expand_location (locus);
+
+  discriminator = next_discriminator_for_locus (locus_e.line);
+
+  for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
+    {
+      gimple *stmt = gsi_stmt (gsi);
+      location_t stmt_locus = gimple_location (stmt);
+      if (same_line_p (locus, &locus_e, stmt_locus))
+	gimple_set_location (stmt,
+	    location_with_discriminator (stmt_locus, discriminator));
+    }
+}
+
+/* Assign discriminators to statement locations.  */
 
 static void
 assign_discriminators (void)
@@ -1189,17 +1215,22 @@ assign_discriminators (void)
 	{
 	  gimple *first = first_non_label_stmt (e->dest);
 	  gimple *last = last_stmt (e->dest);
-	  if ((first && same_line_p (locus, &locus_e,
+
+	  gimple *stmt_on_same_line = NULL;
+	  if (first && same_line_p (locus, &locus_e,
 				     gimple_location (first)))
-	      || (last && same_line_p (locus, &locus_e,
-				       gimple_location (last))))
+	    stmt_on_same_line = first;
+	  else if (last && same_line_p (locus, &locus_e,
+					gimple_location (last)))
+	    stmt_on_same_line = last;
+
+	  if (stmt_on_same_line)
 	    {
-	      if (e->dest->discriminator != 0 && bb->discriminator == 0)
-		bb->discriminator
-		  = next_discriminator_for_locus (locus_e.line);
+	      if (has_discriminator (gimple_location (stmt_on_same_line))
+		  && !has_discriminator (locus))
+		assign_discriminator (locus, bb);
 	      else
-		e->dest->discriminator
-		  = next_discriminator_for_locus (locus_e.line);
+		assign_discriminator (locus, e->dest);
 	    }
 	}
     }
@@ -4167,6 +4198,8 @@ verify_gimple_assign_binary (gassign *stmt)
     case ROUND_MOD_EXPR:
     case RDIV_EXPR:
     case EXACT_DIV_EXPR:
+    case BIT_IOR_EXPR:
+    case BIT_XOR_EXPR:
       /* Disallow pointer and offset types for many of the binary gimple. */
       if (POINTER_TYPE_P (lhs_type)
 	  || TREE_CODE (lhs_type) == OFFSET_TYPE)
@@ -4182,9 +4215,23 @@ verify_gimple_assign_binary (gassign *stmt)
 
     case MIN_EXPR:
     case MAX_EXPR:
-    case BIT_IOR_EXPR:
-    case BIT_XOR_EXPR:
+      /* Continue with generic binary expression handling.  */
+      break;
+
     case BIT_AND_EXPR:
+      if (POINTER_TYPE_P (lhs_type)
+	  && TREE_CODE (rhs2) == INTEGER_CST)
+	break;
+      /* Disallow pointer and offset types for many of the binary gimple. */
+      if (POINTER_TYPE_P (lhs_type)
+	  || TREE_CODE (lhs_type) == OFFSET_TYPE)
+	{
+	  error ("invalid types for %qs", code_name);
+	  debug_generic_expr (lhs_type);
+	  debug_generic_expr (rhs1_type);
+	  debug_generic_expr (rhs2_type);
+	  return true;
+	}
       /* Continue with generic binary expression handling.  */
       break;
 
@@ -9820,16 +9867,12 @@ execute_fixup_cfg (void)
 	      int flags = gimple_call_flags (stmt);
 	      if (flags & (ECF_CONST | ECF_PURE | ECF_LOOPING_CONST_OR_PURE))
 		{
-		  if (gimple_purge_dead_abnormal_call_edges (bb))
-		    todo |= TODO_cleanup_cfg;
-
 		  if (gimple_in_ssa_p (cfun))
 		    {
 		      todo |= TODO_update_ssa | TODO_cleanup_cfg;
 		      update_stmt (stmt);
 		    }
 		}
-
 	      if (flags & ECF_NORETURN
 		  && fixup_noreturn_call (stmt))
 		todo |= TODO_cleanup_cfg;
@@ -9859,10 +9902,15 @@ execute_fixup_cfg (void)
 		}
 	    }
 
-	  if (maybe_clean_eh_stmt (stmt)
+	  gsi_next (&gsi);
+	}
+      if (gimple *last = last_stmt (bb))
+	{
+	  if (maybe_clean_eh_stmt (last)
 	      && gimple_purge_dead_eh_edges (bb))
 	    todo |= TODO_cleanup_cfg;
-	  gsi_next (&gsi);
+	  if (gimple_purge_dead_abnormal_call_edges (bb))
+	    todo |= TODO_cleanup_cfg;
 	}
 
       /* If we have a basic block with no successors that does not

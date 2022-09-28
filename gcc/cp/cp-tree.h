@@ -504,6 +504,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       OVL_NESTED_P (in OVERLOAD)
       DECL_MODULE_EXPORT_P (in _DECL)
       PACK_EXPANSION_FORCE_EXTRA_ARGS_P (in *_PACK_EXPANSION)
+      LAMBDA_EXPR_STATIC_P (in LAMBDA_EXPR)
    4: IDENTIFIER_MARKED (IDENTIFIER_NODEs)
       TREE_HAS_CONSTRUCTOR (in INDIRECT_REF, SAVE_EXPR, CONSTRUCTOR,
 	  CALL_EXPR, or FIELD_DECL).
@@ -517,6 +518,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       CALL_EXPR_REVERSE_ARGS (in CALL_EXPR, AGGR_INIT_EXPR)
       CONSTRUCTOR_PLACEHOLDER_BOUNDARY (in CONSTRUCTOR)
       OVL_EXPORT_P (in OVERLOAD)
+      DECL_NTTP_OBJECT_P (in VAR_DECL)
    6: TYPE_MARKED_P (in _TYPE)
       DECL_NONTRIVIALLY_INITIALIZED_P (in VAR_DECL)
       RANGE_FOR_IVDEP (in RANGE_FOR_STMT)
@@ -1407,6 +1409,8 @@ enum cp_trait_kind
   CPTK_IS_CONSTRUCTIBLE,
   CPTK_IS_NOTHROW_ASSIGNABLE,
   CPTK_IS_NOTHROW_CONSTRUCTIBLE,
+  CPTK_IS_CONVERTIBLE,
+  CPTK_IS_NOTHROW_CONVERTIBLE,
   CPTK_REF_CONSTRUCTS_FROM_TEMPORARY,
   CPTK_REF_CONVERTS_FROM_TEMPORARY
 };
@@ -1487,6 +1491,10 @@ enum cp_lambda_default_capture_mode_type {
 /* True iff uses of a const variable capture were optimized away.  */
 #define LAMBDA_EXPR_CAPTURE_OPTIMIZED(NODE) \
   TREE_LANG_FLAG_2 (LAMBDA_EXPR_CHECK (NODE))
+
+/* Predicate tracking whether the lambda was declared 'static'.  */
+#define LAMBDA_EXPR_STATIC_P(NODE) \
+  TREE_LANG_FLAG_3 (LAMBDA_EXPR_CHECK (NODE))
 
 /* True if this TREE_LIST in LAMBDA_EXPR_CAPTURE_LIST is for an explicit
    capture.  */
@@ -1832,6 +1840,10 @@ struct GTY(()) omp_declare_target_attr {
   bool attr_syntax;
 };
 
+struct GTY(()) omp_begin_assumes_data {
+  bool attr_syntax;
+};
+
 /* Global state.  */
 
 struct GTY(()) saved_scope {
@@ -1879,6 +1891,7 @@ struct GTY(()) saved_scope {
 
   hash_map<tree, tree> *GTY((skip)) x_local_specializations;
   vec<omp_declare_target_attr, va_gc> *omp_declare_target_attribute;
+  vec<omp_begin_assumes_data, va_gc> *omp_begin_assumes;
 
   struct saved_scope *prev;
 };
@@ -3535,6 +3548,10 @@ struct GTY(()) lang_decl {
    both the primary typeinfo object and the associated NTBS name.  */
 #define DECL_TINFO_P(NODE)			\
   TREE_LANG_FLAG_4 (TREE_CHECK2 (NODE,VAR_DECL,TYPE_DECL))
+
+/* true iff VAR_DECL node NODE is a NTTP object decl.  */
+#define DECL_NTTP_OBJECT_P(NODE)			\
+  TREE_LANG_FLAG_5 (TREE_CHECK (NODE,VAR_DECL))
 
 /* 1 iff VAR_DECL node NODE is virtual table or VTT.  We forward to
    DECL_VIRTUAL_P from the common code, as that has the semantics we
@@ -6945,8 +6962,8 @@ extern bool decl_constant_var_p			(tree);
 extern bool decl_maybe_constant_var_p		(tree);
 extern void no_linkage_error			(tree);
 extern void check_default_args			(tree);
-extern bool mark_used				(tree);
-extern bool mark_used			        (tree, tsubst_flags_t);
+extern bool mark_used			        (tree,
+						 tsubst_flags_t = tf_warning_or_error);
 extern bool mark_single_function	        (tree, tsubst_flags_t);
 extern void finish_static_data_member_decl	(tree, tree, bool, tree, int);
 extern tree cp_build_parm_decl			(tree, tree, tree);
@@ -7116,6 +7133,8 @@ extern tree forward_parm			(tree);
 extern bool is_trivially_xible			(enum tree_code, tree, tree);
 extern bool is_nothrow_xible			(enum tree_code, tree, tree);
 extern bool is_xible				(enum tree_code, tree, tree);
+extern bool is_convertible			(tree, tree);
+extern bool is_nothrow_convertible		(tree, tree);
 extern bool ref_xes_from_temporary		(tree, tree, bool);
 extern tree get_defaulted_eh_spec		(tree, tsubst_flags_t = tf_warning_or_error);
 extern bool maybe_explain_implicit_delete	(tree);
@@ -7278,6 +7297,7 @@ extern tree make_constrained_decltype_auto	(tree, tree);
 extern tree make_template_placeholder		(tree);
 extern bool template_placeholder_p		(tree);
 extern bool ctad_template_p			(tree);
+extern bool unparenthesized_id_or_class_member_access_p (tree);
 extern tree do_auto_deduction                   (tree, tree, tree,
                                                  tsubst_flags_t
 						 = tf_warning_or_error,
@@ -7391,8 +7411,7 @@ extern tree template_for_substitution		(tree);
 extern tree build_non_dependent_expr		(tree);
 extern void make_args_non_dependent		(vec<tree, va_gc> *);
 extern bool reregister_specialization		(tree, tree, tree);
-extern tree instantiate_non_dependent_expr	(tree);
-extern tree instantiate_non_dependent_expr_sfinae (tree, tsubst_flags_t);
+extern tree instantiate_non_dependent_expr	(tree, tsubst_flags_t = tf_error);
 extern tree instantiate_non_dependent_expr_internal (tree, tsubst_flags_t);
 extern tree instantiate_non_dependent_or_null   (tree);
 extern bool variable_template_specialization_p  (tree);
@@ -7400,7 +7419,7 @@ extern bool alias_type_or_template_p            (tree);
 enum { nt_opaque = false, nt_transparent = true };
 extern tree alias_template_specialization_p     (const_tree, bool);
 extern tree dependent_alias_template_spec_p     (const_tree, bool);
-extern bool template_parm_object_p		(const_tree);
+extern tree get_template_parm_object		(tree expr, tree mangle);
 extern tree tparm_object_argument		(tree);
 extern bool explicit_class_specialization_p     (tree);
 extern bool push_tinst_level                    (tree);
@@ -7824,8 +7843,8 @@ extern tree build_cplus_new			(tree, tree, tsubst_flags_t);
 extern tree build_local_temp			(tree);
 extern bool is_local_temp			(tree);
 extern tree build_aggr_init_expr		(tree, tree);
-extern tree get_target_expr			(tree);
-extern tree get_target_expr_sfinae		(tree, tsubst_flags_t);
+extern tree get_target_expr			(tree,
+						 tsubst_flags_t = tf_warning_or_error);
 extern tree build_cplus_array_type		(tree, tree, int is_dep = -1);
 extern tree build_array_of_n_type		(tree, int);
 extern bool array_of_runtime_bound_p		(tree);
@@ -7874,7 +7893,8 @@ extern tree replace_placeholders		(tree, tree, bool * = NULL);
 extern bool find_placeholders			(tree);
 extern tree get_type_decl			(tree);
 extern tree decl_namespace_context		(tree);
-extern bool decl_anon_ns_mem_p			(const_tree);
+extern bool decl_anon_ns_mem_p			(tree);
+extern bool decl_internal_context_p		(const_tree);
 extern tree lvalue_type				(tree);
 extern tree error_type				(tree);
 extern int varargs_function_p			(const_tree);
@@ -7937,11 +7957,12 @@ extern int string_conv_p			(const_tree, const_tree, int);
 extern tree cp_truthvalue_conversion		(tree, tsubst_flags_t);
 extern tree contextual_conv_bool		(tree, tsubst_flags_t);
 extern tree condition_conversion		(tree);
-extern tree require_complete_type		(tree);
-extern tree require_complete_type_sfinae	(tree, tsubst_flags_t);
+extern tree require_complete_type		(tree,
+						 tsubst_flags_t = tf_warning_or_error);
 extern tree complete_type			(tree);
 extern tree complete_type_or_else		(tree, tree);
 extern tree complete_type_or_maybe_complain	(tree, tree, tsubst_flags_t);
+extern int cp_compare_floating_point_conversion_ranks (tree, tree);
 inline bool type_unknown_p			(const_tree);
 enum { ce_derived, ce_type, ce_normal, ce_exact };
 extern bool comp_except_specs			(const_tree, const_tree, int);
@@ -8152,10 +8173,10 @@ extern tree binfo_or_else			(tree, tree);
 extern void cxx_readonly_error			(location_t, tree,
 						 enum lvalue_use);
 extern void complete_type_check_abstract	(tree);
-extern int abstract_virtuals_error		(tree, tree);
-extern int abstract_virtuals_error		(abstract_class_use, tree);
-extern int abstract_virtuals_error_sfinae	(tree, tree, tsubst_flags_t);
-extern int abstract_virtuals_error_sfinae	(abstract_class_use, tree, tsubst_flags_t);
+extern int abstract_virtuals_error		(tree, tree,
+						 tsubst_flags_t = tf_warning_or_error);
+extern int abstract_virtuals_error		(abstract_class_use, tree,
+						 tsubst_flags_t = tf_warning_or_error);
 
 extern tree store_init_value			(tree, tree, vec<tree, va_gc>**, int);
 extern tree split_nonconstant_init		(tree, tree);
@@ -8412,8 +8433,10 @@ extern bool require_potential_constant_expression (tree);
 extern bool require_constant_expression (tree);
 extern bool require_rvalue_constant_expression (tree);
 extern bool require_potential_rvalue_constant_expression (tree);
-extern tree cxx_constant_value			(tree, tree = NULL_TREE);
-extern tree cxx_constant_value_sfinae		(tree, tree, tsubst_flags_t);
+extern tree cxx_constant_value			(tree, tree = NULL_TREE,
+						 tsubst_flags_t = tf_error);
+inline tree cxx_constant_value (tree t, tsubst_flags_t complain)
+{ return cxx_constant_value (t, NULL_TREE, complain); }
 extern void cxx_constant_dtor			(tree, tree);
 extern tree cxx_constant_init			(tree, tree = NULL_TREE);
 extern tree maybe_constant_value		(tree, tree = NULL_TREE, bool = false);
@@ -8681,6 +8704,18 @@ struct push_access_scope_guard
       pop_access_scope (decl);
   }
 };
+
+/* True if TYPE is an extended floating-point type.  */
+
+inline bool
+extended_float_type_p (tree type)
+{
+  type = TYPE_MAIN_VARIANT (type);
+  for (int i = 0; i < NUM_FLOATN_NX_TYPES; ++i)
+    if (type == FLOATN_TYPE_NODE (i))
+      return true;
+  return false;
+}
 
 #if CHECKING_P
 namespace selftest {

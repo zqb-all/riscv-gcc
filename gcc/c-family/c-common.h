@@ -184,6 +184,7 @@ enum rid
   RID_IS_UNION,                RID_UNDERLYING_TYPE,
   RID_IS_ASSIGNABLE,           RID_IS_CONSTRUCTIBLE,
   RID_IS_NOTHROW_ASSIGNABLE,   RID_IS_NOTHROW_CONSTRUCTIBLE,
+  RID_IS_CONVERTIBLE,		RID_IS_NOTHROW_CONVERTIBLE,
   RID_REF_CONSTRUCTS_FROM_TEMPORARY,
   RID_REF_CONVERTS_FROM_TEMPORARY,
 
@@ -853,7 +854,6 @@ extern tree identifier_global_tag (tree);
 extern bool names_builtin_p (const char *);
 extern tree c_linkage_bindings (tree);
 extern void record_builtin_type (enum rid, const char *, tree);
-extern tree build_void_list_node (void);
 extern void start_fname_decls (void);
 extern void finish_fname_decls (void);
 extern const char *fname_as_string (int);
@@ -1286,6 +1286,7 @@ struct c_omp_directive {
   bool simd;
 };
 
+extern const struct c_omp_directive c_omp_directives[];
 extern const struct c_omp_directive *c_omp_categorize_directive (const char *,
 								 const char *,
 								 const char *);

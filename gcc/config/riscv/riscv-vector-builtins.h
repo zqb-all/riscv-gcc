@@ -51,12 +51,12 @@ enum vector_type_index
 
 /* RAII class for enabling enough RVV features to define the built-in
    types and implement the riscv_vector.h pragma.
-  
+
    Note: According to 'TYPE_MODE' macro implementation, we need set
    have_regs_of_mode[mode] to be true if we want to get the exact mode
    from 'TYPE_MODE'. However, have_regs_of_mode has not been set yet in
    targetm.init_builtins (). We need rvv_switcher to set have_regs_of_mode
-   before targetm.init_builtins () and recover back have_regs_of_mode 
+   before targetm.init_builtins () and recover back have_regs_of_mode
    after targetm.init_builtins ().  */
 class rvv_switcher
 {

@@ -16,6 +16,9 @@ along with GCC; see the file COPYING3.  If not see
 
 #define IN_TARGET_CODE 1
 
+#define INCLUDE_STRING
+#define INCLUDE_MAP
+#define INCLUDE_VECTOR
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -30,8 +33,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "expr.h"
 #include "selftest.h"
 #include "selftest-rtl.h"
-#include <map>
-#include <vector>
 
 #if CHECKING_P
 using namespace selftest;

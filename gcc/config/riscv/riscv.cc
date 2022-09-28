@@ -6351,7 +6351,7 @@ riscv_vector_mode_supported_p (machine_mode mode)
 
 static bool
 riscv_verify_type_context (location_t loc, type_context_kind context,
-                           const_tree type, bool silent_p)
+			   const_tree type, bool silent_p)
 {
   return riscv_vector::verify_type_context (loc, context, type, silent_p);
 }

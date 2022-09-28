@@ -8356,8 +8356,11 @@ vect_create_nonlinear_iv_init (gimple_seq* stmts, tree init_expr,
 	    sel[2 * i + 1] = i + nunits;
 	  }
 	vec_perm_indices indices (sel, 2, nunits);
+	/* Don't use vect_gen_perm_mask_checked since can_vec_perm_const_p may
+	   fail when vec_init is const vector. In that situation vec_perm is not
+	   really needed.  */
 	tree perm_mask_even
-	  = vect_gen_perm_mask_checked (vectype, indices);
+	  = vect_gen_perm_mask_any (vectype, indices);
 	vec_init = gimple_build (stmts, VEC_PERM_EXPR,
 				 vectype,
 				 vec_init, vec_neg,
@@ -8646,8 +8649,10 @@ vectorizable_nonlinear_induction (loop_vec_info loop_vinfo,
   /* Also doens't support peel for neg when niter is variable.
      ??? generate something like niter_expr & 1 ? init_expr : -init_expr?  */
   niters_skip = LOOP_VINFO_MASK_SKIP_NITERS (loop_vinfo);
-  if (niters_skip != NULL_TREE
-      && TREE_CODE (niters_skip) != INTEGER_CST)
+  if ((niters_skip != NULL_TREE
+       && TREE_CODE (niters_skip) != INTEGER_CST)
+      || (!vect_use_loop_mask_for_alignment_p (loop_vinfo)
+	  && LOOP_VINFO_PEELING_FOR_ALIGNMENT (loop_vinfo) < 0))
     {
       if (dump_enabled_p ())
 	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,

@@ -258,158 +258,105 @@ frange::accept (const vrange_visitor &v) const
   v.visit (*this);
 }
 
-// Helper function to compare floats.  Returns TRUE if op1 .CODE. op2
-// is nonzero.
-
-static inline bool
-tree_compare (tree_code code, tree op1, tree op2)
-{
-  return !integer_zerop (fold_build2 (code, integer_type_node, op1, op2));
-}
-
-// Set the NAN property.  Adjust the range if appopriate.
+// Flush denormal endpoints to the appropriate 0.0.
 
 void
-frange::set_nan (fp_prop::kind k)
+frange::flush_denormals_to_zero ()
 {
-  if (k == fp_prop::YES)
-    {
-      if (!maybe_nan ())
-	{
-	  set_undefined ();
-	  return;
-	}
-      gcc_checking_assert (!undefined_p ());
-      *this = frange_nan (m_type);
-      return;
-    }
-
-  if (k == fp_prop::NO && known_nan ())
-    {
-      set_undefined ();
-      return;
-    }
-
-  // Setting VARYING on an obviously NAN range is a no-op.
-  if (k == fp_prop::VARYING && real_isnan (&m_min))
+  if (undefined_p () || known_isnan ())
     return;
 
-  m_props.set_nan (k);
-  normalize_kind ();
-  if (flag_checking)
-    verify_range ();
-}
-
-// Set the SIGNBIT property.  Adjust the range if appropriate.
-
-void
-frange::set_signbit (fp_prop::kind k)
-{
-  gcc_checking_assert (m_type);
-
-  // No additional adjustments are needed for a NAN.
-  if (known_nan ())
+  // Flush [x, -DENORMAL] to [x, -0.0].
+  if (real_isdenormal (&m_max) && real_isneg (&m_max))
     {
-      m_props.set_signbit (k);
-      return;
+      m_max = dconst0;
+      if (HONOR_SIGNED_ZEROS (m_type))
+	m_max.sign = 1;
     }
-  // Ignore sign changes when they're set correctly.
-  if (!maybe_nan ())
-    {
-      if (real_less (&m_max, &dconst0))
-	return;
-      if (real_less (&dconst0, &m_min))
-	return;
-    }
-  // Adjust the range depending on the sign bit.
-  if (k == fp_prop::YES)
-    {
-      // Crop the range to [-INF, 0].
-      frange crop (m_type, dconstninf, dconst0);
-      intersect (crop);
-      if (!undefined_p ())
-	m_props.set_signbit (fp_prop::YES);
-    }
-  else if (k == fp_prop::NO)
-    {
-      // Crop the range to [0, +INF].
-      frange crop (m_type, dconst0, dconstinf);
-      intersect (crop);
-      if (!undefined_p ())
-	m_props.set_signbit (fp_prop::NO);
-    }
-  else
-    {
-      m_props.set_signbit (fp_prop::VARYING);
-      normalize_kind ();
-    }
-
-  if (flag_checking)
-    verify_range ();
+  // Flush [+DENORMAL, x] to [+0.0, x].
+  if (real_isdenormal (&m_min) && !real_isneg (&m_min))
+    m_min = dconst0;
 }
 
 // Setter for franges.
-
-void
-frange::set (tree min, tree max, value_range_kind kind)
-{
-  gcc_checking_assert (TREE_CODE (min) == REAL_CST);
-  gcc_checking_assert (TREE_CODE (max) == REAL_CST);
-
-  if (kind == VR_UNDEFINED)
-    {
-      set_undefined ();
-      return;
-    }
-
-  // Treat VR_ANTI_RANGE and VR_VARYING as varying.
-  if (kind != VR_RANGE)
-    {
-      set_varying (TREE_TYPE (min));
-      return;
-    }
-
-  m_kind = kind;
-  m_type = TREE_TYPE (min);
-  m_props.set_varying ();
-  m_min = *TREE_REAL_CST_PTR (min);
-  m_max = *TREE_REAL_CST_PTR (max);
-
-  bool is_nan = (real_isnan (TREE_REAL_CST_PTR (min))
-		 || real_isnan (TREE_REAL_CST_PTR (max)));
-
-  // Ranges with a NAN and a non-NAN endpoint are nonsensical.
-  gcc_checking_assert (!is_nan || operand_equal_p (min, max));
-
-  // Set NAN property if we're absolutely sure.
-  if (is_nan && operand_equal_p (min, max))
-    m_props.nan_set_yes ();
-  else if (!HONOR_NANS (m_type))
-    m_props.nan_set_no ();
-
-  // Set SIGNBIT property for positive and negative ranges.
-  if (real_less (&m_max, &dconst0))
-    m_props.signbit_set_yes ();
-  else if (real_less (&dconst0, &m_min))
-    m_props.signbit_set_no ();
-
-  // Check for swapped ranges.
-  gcc_checking_assert (is_nan || tree_compare (LE_EXPR, min, max));
-
-  normalize_kind ();
-
-  if (flag_checking)
-    verify_range ();
-}
-
-// Setter for frange from REAL_VALUE_TYPE endpoints.
 
 void
 frange::set (tree type,
 	     const REAL_VALUE_TYPE &min, const REAL_VALUE_TYPE &max,
 	     value_range_kind kind)
 {
-  set (build_real (type, min), build_real (type, max), kind);
+  switch (kind)
+    {
+    case VR_UNDEFINED:
+      set_undefined ();
+      return;
+    case VR_VARYING:
+    case VR_ANTI_RANGE:
+      set_varying (type);
+      return;
+    case VR_RANGE:
+      break;
+    default:
+      gcc_unreachable ();
+    }
+
+  // Handle NANs.
+  if (real_isnan (&min) || real_isnan (&max))
+    {
+      gcc_checking_assert (real_identical (&min, &max));
+      if (HONOR_NANS (type))
+	{
+	  bool sign = real_isneg (&min);
+	  set_nan (type, sign);
+	}
+      else
+	set_undefined ();
+      return;
+    }
+
+  m_kind = kind;
+  m_type = type;
+  m_min = min;
+  m_max = max;
+  if (HONOR_NANS (m_type))
+    {
+      m_pos_nan = true;
+      m_neg_nan = true;
+    }
+  else
+    {
+      m_pos_nan = false;
+      m_neg_nan = false;
+    }
+
+  // For -ffinite-math-only we can drop ranges outside the
+  // representable numbers to min/max for the type.
+  if (flag_finite_math_only)
+    {
+      REAL_VALUE_TYPE min_repr = frange_val_min (m_type);
+      REAL_VALUE_TYPE max_repr = frange_val_max (m_type);
+      if (real_less (&m_min, &min_repr))
+	m_min = min_repr;
+      if (real_less (&max_repr, &m_max))
+	m_max = max_repr;
+    }
+
+  // Check for swapped ranges.
+  gcc_checking_assert (real_compare (LE_EXPR, &min, &max));
+
+  normalize_kind ();
+
+  flush_denormals_to_zero ();
+
+  if (flag_checking)
+    verify_range ();
+}
+
+void
+frange::set (tree min, tree max, value_range_kind kind)
+{
+  set (TREE_TYPE (min),
+       *TREE_REAL_CST_PTR (min), *TREE_REAL_CST_PTR (max), kind);
 }
 
 // Normalize range to VARYING or UNDEFINED, or vice versa.  Return
@@ -423,18 +370,11 @@ frange::set (tree type,
 bool
 frange::normalize_kind ()
 {
-  // Undefined is viral.
-  if (m_props.nan_undefined_p () || m_props.signbit_undefined_p ())
-    {
-      set_undefined ();
-      return true;
-    }
   if (m_kind == VR_RANGE
-      && real_isinf (&m_min, 1)
-      && real_isinf (&m_max, 0))
+      && frange_val_is_min (m_min, m_type)
+      && frange_val_is_max (m_max, m_type))
     {
-      // No FP properties set means varying.
-      if (m_props.varying_p ())
+      if (m_pos_nan && m_neg_nan)
 	{
 	  set_varying (m_type);
 	  return true;
@@ -442,16 +382,76 @@ frange::normalize_kind ()
     }
   else if (m_kind == VR_VARYING)
     {
-      // If a VARYING has any FP properties, it's no longer VARYING.
-      if (!m_props.varying_p ())
+      if (!m_pos_nan || !m_neg_nan)
 	{
 	  m_kind = VR_RANGE;
-	  m_min = dconstninf;
-	  m_max = dconstinf;
+	  m_min = frange_val_min (m_type);
+	  m_max = frange_val_max (m_type);
 	  return true;
 	}
     }
+  else if (m_kind == VR_NAN && !m_pos_nan && !m_neg_nan)
+    set_undefined ();
   return false;
+}
+
+// Union or intersect the zero endpoints of two ranges.  For example:
+//   [-0,  x] U [+0,  x] => [-0,  x]
+//   [ x, -0] U [ x, +0] => [ x, +0]
+//   [-0,  x] ^ [+0,  x] => [+0,  x]
+//   [ x, -0] ^ [ x, +0] => [ x, -0]
+//
+// UNION_P is true when performing a union, or false when intersecting.
+
+bool
+frange::combine_zeros (const frange &r, bool union_p)
+{
+  gcc_checking_assert (!undefined_p () && !known_isnan ());
+
+  bool changed = false;
+  if (real_iszero (&m_min) && real_iszero (&r.m_min)
+      && real_isneg (&m_min) != real_isneg (&r.m_min))
+    {
+      m_min.sign = union_p;
+      changed = true;
+    }
+  if (real_iszero (&m_max) && real_iszero (&r.m_max)
+      && real_isneg (&m_max) != real_isneg (&r.m_max))
+    {
+      m_max.sign = !union_p;
+      changed = true;
+    }
+  // If the signs are swapped, the resulting range is empty.
+  if (m_min.sign == 0 && m_max.sign == 1)
+    {
+      if (maybe_isnan ())
+	m_kind = VR_NAN;
+      else
+	set_undefined ();
+      changed = true;
+    }
+  return changed;
+}
+
+// Union two ranges when one is known to be a NAN.
+
+bool
+frange::union_nans (const frange &r)
+{
+  gcc_checking_assert (known_isnan () || r.known_isnan ());
+
+  if (known_isnan ())
+    {
+      m_kind = r.m_kind;
+      m_min = r.m_min;
+      m_max = r.m_max;
+    }
+  m_pos_nan |= r.m_pos_nan;
+  m_neg_nan |= r.m_neg_nan;
+  normalize_kind ();
+  if (flag_checking)
+    verify_range ();
+  return true;
 }
 
 bool
@@ -467,29 +467,18 @@ frange::union_ (const vrange &v)
       return true;
     }
 
-  // If one side has a NAN, the union is the other side, plus the union
-  // of the properties and the possibility of a NAN.
-  if (known_nan ())
+  // Combine NAN info.
+  if (known_isnan () || r.known_isnan ())
+    return union_nans (r);
+  bool changed = false;
+  if (m_pos_nan != r.m_pos_nan || m_neg_nan != r.m_neg_nan)
     {
-      frange_props save = m_props;
-      *this = r;
-      m_props = save;
-      m_props.union_ (r.m_props);
-      set_nan (fp_prop::VARYING);
-      if (flag_checking)
-	verify_range ();
-      return true;
-    }
-  if (r.known_nan ())
-    {
-      m_props.union_ (r.m_props);
-      set_nan (fp_prop::VARYING);
-      if (flag_checking)
-	verify_range ();
-      return true;
+      m_pos_nan |= r.m_pos_nan;
+      m_neg_nan |= r.m_neg_nan;
+      changed = true;
     }
 
-  bool changed = m_props.union_ (r.m_props);
+  // Combine endpoints.
   if (real_less (&r.m_min, &m_min))
     {
       m_min = r.m_min;
@@ -500,11 +489,32 @@ frange::union_ (const vrange &v)
       m_max = r.m_max;
       changed = true;
     }
-  changed |= normalize_kind ();
 
+  if (HONOR_SIGNED_ZEROS (m_type))
+    changed |= combine_zeros (r, true);
+
+  changed |= normalize_kind ();
   if (flag_checking)
     verify_range ();
   return changed;
+}
+
+// Intersect two ranges when one is known to be a NAN.
+
+bool
+frange::intersect_nans (const frange &r)
+{
+  gcc_checking_assert (known_isnan () || r.known_isnan ());
+
+  m_pos_nan &= r.m_pos_nan;
+  m_neg_nan &= r.m_neg_nan;
+  if (maybe_isnan ())
+    m_kind = VR_NAN;
+  else
+    set_undefined ();
+  if (flag_checking)
+    verify_range ();
+  return true;
 }
 
 bool
@@ -525,25 +535,18 @@ frange::intersect (const vrange &v)
       return true;
     }
 
-  // If two NANs are not exactly the same, drop to an unknown NAN,
-  // otherwise there's nothing to do.
-  if (known_nan () && r.known_nan ())
+  // Combine NAN info.
+  if (known_isnan () || r.known_isnan ())
+    return intersect_nans (r);
+  bool changed = false;
+  if (m_pos_nan != r.m_pos_nan || m_neg_nan != r.m_neg_nan)
     {
-      if (m_props == r.m_props)
-	return false;
-
-      *this = frange_nan (m_type);
-      return true;
-    }
-  // ?? Perhaps the intersection of a NAN and anything is a NAN ??.
-  if (known_nan () || r.known_nan ())
-    {
-      set_varying (m_type);
-      return true;
+      m_pos_nan &= r.m_pos_nan;
+      m_neg_nan &= r.m_neg_nan;
+      changed = true;
     }
 
-  bool changed = m_props.intersect (r.m_props);
-
+  // Combine endpoints.
   if (real_less (&m_min, &r.m_min))
     {
       m_min = r.m_min;
@@ -554,14 +557,22 @@ frange::intersect (const vrange &v)
       m_max = r.m_max;
       changed = true;
     }
-  // If the endpoints are swapped, the ranges are disjoint.
+  // If the endpoints are swapped, the resulting range is empty.
   if (real_less (&m_max, &m_min))
     {
-      set_undefined ();
+      if (maybe_isnan ())
+	m_kind = VR_NAN;
+      else
+	set_undefined ();
+      if (flag_checking)
+	verify_range ();
       return true;
     }
-  changed |= normalize_kind ();
 
+  if (HONOR_SIGNED_ZEROS (m_type))
+    changed |= combine_zeros (r, false);
+
+  changed |= normalize_kind ();
   if (flag_checking)
     verify_range ();
   return changed;
@@ -574,7 +585,8 @@ frange::operator= (const frange &src)
   m_type = src.m_type;
   m_min = src.m_min;
   m_max = src.m_max;
-  m_props = src.m_props;
+  m_pos_nan = src.m_pos_nan;
+  m_neg_nan = src.m_neg_nan;
 
   if (flag_checking)
     verify_range ();
@@ -592,12 +604,13 @@ frange::operator== (const frange &src) const
       if (varying_p ())
 	return types_compatible_p (m_type, src.m_type);
 
-      if (known_nan () || src.known_nan ())
+      if (known_isnan () || src.known_isnan ())
 	return false;
 
       return (real_identical (&m_min, &src.m_min)
 	      && real_identical (&m_max, &src.m_max)
-	      && m_props == src.m_props
+	      && m_pos_nan == src.m_pos_nan
+	      && m_neg_nan == src.m_neg_nan
 	      && types_compatible_p (m_type, src.m_type));
     }
   return false;
@@ -608,30 +621,33 @@ frange::operator== (const frange &src) const
 bool
 frange::contains_p (tree cst) const
 {
+  gcc_checking_assert (m_kind != VR_ANTI_RANGE);
+  const REAL_VALUE_TYPE *rv = TREE_REAL_CST_PTR (cst);
+
   if (undefined_p ())
     return false;
 
   if (varying_p ())
     return true;
 
-  gcc_checking_assert (m_kind == VR_RANGE);
-
-  const REAL_VALUE_TYPE *rv = TREE_REAL_CST_PTR (cst);
-  if (real_compare (GE_EXPR, rv, &m_min)
-      && real_compare (LE_EXPR, rv, &m_max))
+  if (real_isnan (rv))
     {
+      // No NAN in range.
+      if (!m_pos_nan && !m_neg_nan)
+	return false;
+      // Both +NAN and -NAN are present.
+      if (m_pos_nan && m_neg_nan)
+	return true;
+      return m_neg_nan == rv->sign;
+    }
+  if (known_isnan ())
+    return false;
+
+  if (real_compare (GE_EXPR, rv, &m_min) && real_compare (LE_EXPR, rv, &m_max))
+    {
+      // Make sure the signs are equal for signed zeros.
       if (HONOR_SIGNED_ZEROS (m_type) && real_iszero (rv))
-	{
-	  // FIXME: This is still using get_signbit() instead of
-	  // known_signbit() because the latter bails on possible NANs
-	  // (for now).
-	  if (get_signbit ().yes_p ())
-	    return real_isneg (rv);
-	  else if (get_signbit ().no_p ())
-	    return !real_isneg (rv);
-	  else
-	    return true;
-	}
+	return m_min.sign == m_max.sign && m_min.sign == rv->sign;
       return true;
     }
   return false;
@@ -648,29 +664,24 @@ frange::singleton_p (tree *result) const
   if (m_kind == VR_RANGE && real_identical (&m_min, &m_max))
     {
       // Return false for any singleton that may be a NAN.
-      if (HONOR_NANS (m_type) && maybe_nan ())
+      if (HONOR_NANS (m_type) && maybe_isnan ())
 	return false;
 
-      // Return the appropriate zero if known.
-      if (HONOR_SIGNED_ZEROS (m_type) && zero_p ())
+      if (MODE_COMPOSITE_P (TYPE_MODE (m_type)))
 	{
-	  bool signbit;
-	  if (known_signbit (signbit))
-	    {
-	      if (signbit)
-		{
-		  if (result)
-		    *result = build_real (m_type, real_value_negate (&dconst0));
-		}
-	      else
-		{
-		  if (result)
-		    *result = build_real (m_type, dconst0);
-		}
-	      return true;
-	    }
-	  return false;
+	  // For IBM long doubles, if the value is +-Inf or is exactly
+	  // representable in double, the other double could be +0.0
+	  // or -0.0.  Since this means there is more than one way to
+	  // represent a value, return false to avoid propagating it.
+	  // See libgcc/config/rs6000/ibm-ldouble-format for details.
+	  if (real_isinf (&m_min))
+	    return false;
+	  REAL_VALUE_TYPE r;
+	  real_convert (&r, DFmode, &m_min);
+	  if (real_identical (&r, &m_min))
+	    return false;
 	}
+
       if (result)
 	*result = build_real (m_type, m_min);
       return true;
@@ -687,58 +698,42 @@ frange::supports_type_p (const_tree type) const
 void
 frange::verify_range ()
 {
-  if (undefined_p ())
+  switch (m_kind)
     {
-      gcc_checking_assert (m_props.undefined_p ());
+    case VR_UNDEFINED:
+      gcc_checking_assert (!m_type);
       return;
-    }
-  gcc_checking_assert (!m_props.undefined_p ());
-
-  if (varying_p ())
-    {
-      gcc_checking_assert (m_props.varying_p ());
+    case VR_VARYING:
+      gcc_checking_assert (m_type);
+      gcc_checking_assert (m_pos_nan && m_neg_nan);
+      gcc_checking_assert (frange_val_is_min (m_min, m_type));
+      gcc_checking_assert (frange_val_is_max (m_max, m_type));
       return;
+    case VR_RANGE:
+      gcc_checking_assert (m_type);
+      break;
+    case VR_NAN:
+      gcc_checking_assert (m_type);
+      gcc_checking_assert (m_pos_nan || m_neg_nan);
+      return;
+    default:
+      gcc_unreachable ();
     }
 
-  // We don't support the inverse of an frange (yet).
-  gcc_checking_assert (m_kind == VR_RANGE);
+  // NANs cannot appear in the endpoints of a range.
+  gcc_checking_assert (!real_isnan (&m_min) && !real_isnan (&m_max));
 
-  bool is_nan = real_isnan (&m_min) || real_isnan (&m_max);
-  if (is_nan)
-    {
-      // If either is a NAN, both must be a NAN.
-      gcc_checking_assert (real_identical (&m_min, &m_max));
-      gcc_checking_assert (known_nan ());
-    }
-  else
-    // Make sure we don't have swapped ranges.
-    gcc_checking_assert (!real_less (&m_max, &m_min));
+  // Make sure we don't have swapped ranges.
+  gcc_checking_assert (!real_less (&m_max, &m_min));
 
-  // If we're absolutely sure we have a NAN, the endpoints should
-  // reflect this, otherwise we'd have more than one way to represent
-  // a NAN.
-  if (known_nan ())
-    {
-      gcc_checking_assert (real_isnan (&m_min));
-      gcc_checking_assert (real_isnan (&m_max));
-    }
-  else
-    {
-      // Make sure the signbit and range agree.
-      bool signbit;
-      if (known_signbit (signbit))
-	{
-	  if (signbit)
-	    gcc_checking_assert (real_compare (LE_EXPR, &m_max, &dconst0));
-	  else
-	    gcc_checking_assert (real_compare (GE_EXPR, &m_min, &dconst0));
-	}
-    }
+  // [ +0.0, -0.0 ] is nonsensical.
+  gcc_checking_assert (!(real_iszero (&m_min, 0) && real_iszero (&m_max, 1)));
 
   // If all the properties are clear, we better not span the entire
   // domain, because that would make us varying.
-  if (m_props.varying_p ())
-    gcc_checking_assert (!real_isinf (&m_min, 1) || !real_isinf (&m_max, 0));
+  if (m_pos_nan && m_neg_nan)
+    gcc_checking_assert (!frange_val_is_min (m_min, m_type)
+			 || !frange_val_is_max (m_max, m_type));
 }
 
 // We can't do much with nonzeros yet.
@@ -755,16 +750,24 @@ frange::nonzero_p () const
   return false;
 }
 
-// Set range to [+0.0, +0.0].
+// Set range to [+0.0, +0.0] if honoring signed zeros, or [0.0, 0.0]
+// otherwise.
 
 void
 frange::set_zero (tree type)
 {
-  tree zero = build_zero_cst (type);
-  set (zero, zero);
+  if (HONOR_SIGNED_ZEROS (type))
+    {
+      REAL_VALUE_TYPE dconstm0 = dconst0;
+      dconstm0.sign = 1;
+      set (type, dconstm0, dconst0);
+      clear_nan ();
+    }
+  else
+    set (type, dconst0, dconst0);
 }
 
-// Return TRUE for any [0.0, 0.0] regardless of sign.
+// Return TRUE for any zero regardless of sign.
 
 bool
 frange::zero_p () const
@@ -777,9 +780,11 @@ frange::zero_p () const
 void
 frange::set_nonnegative (tree type)
 {
-  tree zero = build_zero_cst (type);
-  tree inf = vrp_val_max (type);
-  set (zero, inf);
+  set (type, dconst0, frange_val_max (type));
+
+  // Set +NAN as the only possibility.
+  if (HONOR_NANS (type))
+    update_nan (/*sign=*/0);
 }
 
 // Here we copy between any two irange's.  The ranges can be legacy or
@@ -2925,6 +2930,19 @@ irange::set_nonzero_bits (const wide_int_ref &bits)
       set_nonzero_bits (NULL);
       return;
     }
+  // If we have only one bit set in the mask, we can figure out the
+  // range immediately.
+  if (wi::popcount (bits) == 1)
+    {
+      bool has_zero = contains_p (build_zero_cst (type ()));
+      set (type (), bits, bits);
+      if (has_zero)
+	{
+	  int_range<2> zero;
+	  zero.set_zero (type ());
+	  union_ (zero);
+	}
+    }
   set_nonzero_bits (wide_int_to_tree (type (), bits));
 }
 
@@ -3635,62 +3653,110 @@ range_tests_nan ()
       r1 = frange_float ("10", "12");
       r0 = r1;
       ASSERT_EQ (r0, r1);
-      r0.set_nan (fp_prop::NO);
+      r0.clear_nan ();
       ASSERT_NE (r0, r1);
-      r0.set_nan (fp_prop::YES);
-      ASSERT_NE (r0, r1);
+      r0.update_nan ();
+      ASSERT_EQ (r0, r1);
+
+      // [10, 20] NAN ^ [30, 40] NAN = NAN.
+      r0 = frange_float ("10", "20");
+      r1 = frange_float ("30", "40");
+      r0.intersect (r1);
+      ASSERT_TRUE (r0.known_isnan ());
+
+      // [3,5] U [5,10] NAN = ... NAN
+      r0 = frange_float ("3", "5");
+      r0.clear_nan ();
+      r1 = frange_float ("5", "10");
+      r0.union_ (r1);
+      ASSERT_TRUE (r0.maybe_isnan ());
     }
 
   // NAN ranges are not equal to each other.
-  r0 = frange_nan (float_type_node);
+  r0.set_nan (float_type_node);
   r1 = r0;
   ASSERT_FALSE (r0 == r1);
   ASSERT_FALSE (r0 == r0);
   ASSERT_TRUE (r0 != r0);
 
-  // [5,6] U NAN.
+  // [5,6] U NAN = [5,6] NAN.
   r0 = frange_float ("5", "6");
-  r0.set_nan (fp_prop::NO);
-  r1 = frange_nan (float_type_node);
+  r0.clear_nan ();
+  r1.set_nan (float_type_node);
   r0.union_ (r1);
   real_from_string (&q, "5");
   real_from_string (&r, "6");
   ASSERT_TRUE (real_identical (&q, &r0.lower_bound ()));
   ASSERT_TRUE (real_identical (&r, &r0.upper_bound ()));
-  ASSERT_TRUE (r0.maybe_nan ());
+  ASSERT_TRUE (r0.maybe_isnan ());
 
   // NAN U NAN = NAN
-  r0 = frange_nan (float_type_node);
-  r1 = frange_nan (float_type_node);
+  r0.set_nan (float_type_node);
+  r1.set_nan (float_type_node);
   r0.union_ (r1);
-  ASSERT_TRUE (real_isnan (&r0.lower_bound ()));
-  ASSERT_TRUE (real_isnan (&r1.upper_bound ()));
-  ASSERT_TRUE (r0.known_nan ());
+  ASSERT_TRUE (r0.known_isnan ());
 
-  // [INF, INF] ^ NAN = VARYING
-  r0 = frange_nan (float_type_node);
+  // [INF, INF] NAN ^ NAN = NAN
+  r0.set_nan (float_type_node);
   r1 = frange_float ("+Inf", "+Inf");
+  if (!HONOR_NANS (float_type_node))
+    r1.update_nan ();
   r0.intersect (r1);
-  ASSERT_TRUE (r0.varying_p ());
+  ASSERT_TRUE (r0.known_isnan ());
 
   // NAN ^ NAN = NAN
-  r0 = frange_nan (float_type_node);
-  r1 = frange_nan (float_type_node);
+  r0.set_nan (float_type_node);
+  r1.set_nan (float_type_node);
   r0.intersect (r1);
-  ASSERT_TRUE (r0.known_nan ());
+  ASSERT_TRUE (r0.known_isnan ());
+
+  // +NAN ^ -NAN = UNDEFINED
+  r0.set_nan (float_type_node, false);
+  r1.set_nan (float_type_node, true);
+  r0.intersect (r1);
+  ASSERT_TRUE (r0.undefined_p ());
 
   // VARYING ^ NAN = NAN.
-  r0 = frange_nan (float_type_node);
+  r0.set_nan (float_type_node);
   r1.set_varying (float_type_node);
   r0.intersect (r1);
-  ASSERT_TRUE (r0.known_nan ());
+  ASSERT_TRUE (r0.known_isnan ());
 
-  // Setting the NAN bit to yes, forces to range to [NAN, NAN].
+  // [3,4] ^ NAN = UNDEFINED.
+  r0 = frange_float ("3", "4");
+  r0.clear_nan ();
+  r1.set_nan (float_type_node);
+  r0.intersect (r1);
+  ASSERT_TRUE (r0.undefined_p ());
+
+  // [-3, 5] ^ NAN = UNDEFINED
+  r0 = frange_float ("-3", "5");
+  r0.clear_nan ();
+  r1.set_nan (float_type_node);
+  r0.intersect (r1);
+  ASSERT_TRUE (r0.undefined_p ());
+
+  // Setting the NAN bit to yes does not make us a known NAN.
   r0.set_varying (float_type_node);
-  r0.set_nan (fp_prop::YES);
-  ASSERT_TRUE (r0.known_nan ());
-  ASSERT_TRUE (real_isnan (&r0.lower_bound ()));
-  ASSERT_TRUE (real_isnan (&r0.upper_bound ()));
+  r0.update_nan ();
+  ASSERT_FALSE (r0.known_isnan ());
+
+  // NAN is in a VARYING.
+  r0.set_varying (float_type_node);
+  real_nan (&r, "", 1, TYPE_MODE (float_type_node));
+  tree nan = build_real (float_type_node, r);
+  ASSERT_TRUE (r0.contains_p (nan));
+
+  // -NAN is in a VARYING.
+  r0.set_varying (float_type_node);
+  q = real_value_negate (&r);
+  tree neg_nan = build_real (float_type_node, q);
+  ASSERT_TRUE (r0.contains_p (neg_nan));
+
+  // Clearing the NAN on a [] NAN is the empty set.
+  r0.set_nan (float_type_node);
+  r0.clear_nan ();
+  ASSERT_TRUE (r0.undefined_p ());
 }
 
 static void
@@ -3702,49 +3768,89 @@ range_tests_signed_zeros ()
   frange r0, r1;
   bool signbit;
 
-  // Since -0.0 == +0.0, a range of [-0.0, -0.0] should contain +0.0
-  // and vice versa.
+  // [0,0] contains [0,0] but not [-0,-0] and vice versa.
   r0 = frange (zero, zero);
   r1 = frange (neg_zero, neg_zero);
   ASSERT_TRUE (r0.contains_p (zero));
-  ASSERT_TRUE (r0.contains_p (neg_zero));
-  ASSERT_TRUE (r1.contains_p (zero));
+  ASSERT_TRUE (!r0.contains_p (neg_zero));
   ASSERT_TRUE (r1.contains_p (neg_zero));
+  ASSERT_TRUE (!r1.contains_p (zero));
 
   // Test contains_p() when we know the sign of the zero.
-  r0 = frange(zero, zero);
-  r0.set_signbit (fp_prop::NO);
+  r0 = frange (zero, zero);
   ASSERT_TRUE (r0.contains_p (zero));
   ASSERT_FALSE (r0.contains_p (neg_zero));
-  r0.set_signbit (fp_prop::YES);
+  r0 = frange (neg_zero, neg_zero);
   ASSERT_TRUE (r0.contains_p (neg_zero));
   ASSERT_FALSE (r0.contains_p (zero));
 
-  // The intersection of zeros that differ in sign is the empty set.
-  r0 = frange (zero, zero);
-  r0.set_signbit (fp_prop::YES);
+  // The intersection of zeros that differ in sign is a NAN (or
+  // undefined if not honoring NANs).
+  r0 = frange (neg_zero, neg_zero);
   r1 = frange (zero, zero);
-  r1.set_signbit (fp_prop::NO);
   r0.intersect (r1);
-  ASSERT_TRUE (r0.undefined_p ());
+  if (HONOR_NANS (float_type_node))
+    ASSERT_TRUE (r0.known_isnan ());
+  else
+    ASSERT_TRUE (r0.undefined_p ());
 
   // The union of zeros that differ in sign is a zero with unknown sign.
   r0 = frange (zero, zero);
-  r0.set_signbit (fp_prop::NO);
-  r1 = frange (zero, zero);
-  r1.set_signbit (fp_prop::YES);
+  r1 = frange (neg_zero, neg_zero);
   r0.union_ (r1);
-  ASSERT_TRUE (r0.zero_p () && !r0.known_signbit (signbit));
+  ASSERT_TRUE (r0.zero_p () && !r0.signbit_p (signbit));
 
-  // NAN U [5,6] should be [5,6] with no sign info.
-  r0 = frange_nan (float_type_node);
+  // [-0, +0] has an unknown sign.
+  r0 = frange (neg_zero, zero);
+  ASSERT_TRUE (r0.zero_p () && !r0.signbit_p (signbit));
+
+  // [-0, +0] ^ [0, 0] is [0, 0]
+  r0 = frange (neg_zero, zero);
+  r1 = frange (zero, zero);
+  r0.intersect (r1);
+  ASSERT_TRUE (r0.zero_p ());
+
+  // NAN U [5,6] should be [5,6] NAN.
+  r0.set_nan (float_type_node);
   r1 = frange_float ("5", "6");
+  r1.clear_nan ();
   r0.union_ (r1);
   real_from_string (&q, "5");
   real_from_string (&r, "6");
   ASSERT_TRUE (real_identical (&q, &r0.lower_bound ()));
   ASSERT_TRUE (real_identical (&r, &r0.upper_bound ()));
-  ASSERT_TRUE (!r0.known_signbit (signbit));
+  ASSERT_TRUE (!r0.signbit_p (signbit));
+  ASSERT_TRUE (r0.maybe_isnan ());
+
+  r0 = frange_float ("+0", "5");
+  r0.clear_nan ();
+  ASSERT_TRUE (r0.signbit_p (signbit) && !signbit);
+
+  r0 = frange_float ("-0", "5");
+  r0.clear_nan ();
+  ASSERT_TRUE (!r0.signbit_p (signbit));
+
+  r0 = frange_float ("-0", "10");
+  r1 = frange_float ("0", "5");
+  r0.intersect (r1);
+  ASSERT_TRUE (real_iszero (&r0.lower_bound (), false));
+
+  r0 = frange_float ("-0", "5");
+  r1 = frange_float ("0", "5");
+  r0.union_ (r1);
+  ASSERT_TRUE (real_iszero (&r0.lower_bound (), true));
+
+  r0 = frange_float ("-5", "-0");
+  r0.update_nan ();
+  r1 = frange_float ("0", "0");
+  r1.update_nan ();
+  r0.intersect (r1);
+  ASSERT_TRUE (r0.known_isnan ());
+
+  r0.set_nonnegative (float_type_node);
+  ASSERT_TRUE (r0.signbit_p (signbit) && !signbit);
+  if (HONOR_NANS (float_type_node))
+    ASSERT_TRUE (r0.maybe_isnan ());
 }
 
 static void
@@ -3753,52 +3859,25 @@ range_tests_signbit ()
   frange r0, r1;
   bool signbit;
 
-  // Setting the signbit drops the range to [-INF, 0].
-  r0.set_varying (float_type_node);
-  r0.set_signbit (fp_prop::YES);
-  ASSERT_TRUE (real_isinf (&r0.lower_bound (), 1));
-  ASSERT_TRUE (real_iszero (&r0.upper_bound ()));
-
-  // Setting the signbit for [-5, 10] crops the range to [-5, 0] with
-  // the signbit property set.
-  r0 = frange_float ("-5", "10");
-  r0.set_signbit (fp_prop::YES);
-  r0.set_nan (fp_prop::NO);
-  ASSERT_TRUE (r0.known_signbit (signbit) && signbit);
-  r1 = frange_float ("-5", "0");
-  ASSERT_TRUE (real_identical (&r0.lower_bound (), &r1.lower_bound ()));
-  ASSERT_TRUE (real_identical (&r0.upper_bound (), &r1.upper_bound ()));
-
   // Negative numbers should have the SIGNBIT set.
   r0 = frange_float ("-5", "-1");
-  r0.set_nan (fp_prop::NO);
-  ASSERT_TRUE (r0.known_signbit (signbit) && signbit);
+  r0.clear_nan ();
+  ASSERT_TRUE (r0.signbit_p (signbit) && signbit);
   // Positive numbers should have the SIGNBIT clear.
   r0 = frange_float ("1", "10");
-  r0.set_nan (fp_prop::NO);
-  ASSERT_TRUE (r0.known_signbit (signbit) && !signbit);
+  r0.clear_nan ();
+  ASSERT_TRUE (r0.signbit_p (signbit) && !signbit);
   // Numbers containing zero should have an unknown SIGNBIT.
   r0 = frange_float ("0", "10");
-  r0.set_nan (fp_prop::NO);
-  ASSERT_TRUE (!r0.known_signbit (signbit));
+  r0.clear_nan ();
+  ASSERT_TRUE (r0.signbit_p (signbit) && !signbit);
   // Numbers spanning both positive and negative should have an
   // unknown SIGNBIT.
   r0 = frange_float ("-10", "10");
-  r0.set_nan (fp_prop::NO);
-  ASSERT_TRUE (!r0.known_signbit (signbit));
+  r0.clear_nan ();
+  ASSERT_TRUE (!r0.signbit_p (signbit));
   r0.set_varying (float_type_node);
-  ASSERT_TRUE (!r0.known_signbit (signbit));
-
-  // Ignore signbit changes when the sign bit is obviously known from
-  // the range.
-  r0 = frange_float ("5", "10");
-  r0.set_nan (fp_prop::NO);
-  r0.set_signbit (fp_prop::VARYING);
-  ASSERT_TRUE (r0.known_signbit (signbit) && !signbit);
-  r0 = frange_float ("-5", "-1");
-  r0.set_signbit (fp_prop::NO);
-  r0.set_nan (fp_prop::NO);
-  ASSERT_TRUE (r0.undefined_p ());
+  ASSERT_TRUE (!r0.signbit_p (signbit));
 }
 
 static void
@@ -3815,28 +3894,11 @@ range_tests_floats ()
   // A range of [-INF,+INF] is actually VARYING if no other properties
   // are set.
   r0 = frange_float ("-Inf", "+Inf");
-  if (r0.maybe_nan ())
+  if (r0.maybe_isnan ())
     ASSERT_TRUE (r0.varying_p ());
   // ...unless it has some special property...
-  r0.set_nan (fp_prop::NO);
+  r0.clear_nan ();
   ASSERT_FALSE (r0.varying_p ());
-
-  // The endpoints of a VARYING are +-INF.
-  r0.set_varying (float_type_node);
-  ASSERT_TRUE (real_identical (&r0.lower_bound (), &dconstninf));
-  ASSERT_TRUE (real_identical (&r0.upper_bound (), &dconstinf));
-
-  // The maximum representable range for a type is still a subset of VARYING.
-  REAL_VALUE_TYPE q, r;
-  real_min_representable (&q, float_type_node);
-  real_max_representable (&r, float_type_node);
-  r0 = frange (float_type_node, q, r);
-  // r0 is not a varying, because it does not include -INF/+INF.
-  ASSERT_FALSE (r0.varying_p ());
-  // The upper bound of r0 must be less than +INF.
-  ASSERT_TRUE (real_less (&r0.upper_bound (), &dconstinf));
-  // The lower bound of r0 must be greater than -INF.
-  ASSERT_TRUE (real_less (&dconstninf, &r0.lower_bound ()));
 
   // For most architectures, where float and double are different
   // sizes, having the same endpoints does not necessarily mean the
@@ -3896,9 +3958,19 @@ range_tests_floats ()
   r0.intersect (r1);
   ASSERT_EQ (r0, frange_float ("15", "20"));
 
+  // [10,20] NAN ^ [21,25] NAN = [NAN]
+  r0 = frange_float ("10", "20");
+  r0.update_nan ();
+  r1 = frange_float ("21", "25");
+  r1.update_nan ();
+  r0.intersect (r1);
+  ASSERT_TRUE (r0.known_isnan ());
+
   // [10,20] ^ [21,25] = []
   r0 = frange_float ("10", "20");
+  r0.clear_nan ();
   r1 = frange_float ("21", "25");
+  r1.clear_nan ();
   r0.intersect (r1);
   ASSERT_TRUE (r0.undefined_p ());
 }

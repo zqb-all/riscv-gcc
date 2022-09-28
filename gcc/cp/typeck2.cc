@@ -130,8 +130,8 @@ cxx_readonly_error (location_t loc, tree arg, enum lvalue_use errstring)
    all was well.  */
 
 static int
-abstract_virtuals_error_sfinae (tree decl, tree type, abstract_class_use use,
-				tsubst_flags_t complain)
+abstract_virtuals_error (tree decl, tree type, abstract_class_use use,
+			 tsubst_flags_t complain)
 {
   vec<tree, va_gc> *pure;
 
@@ -251,32 +251,19 @@ abstract_virtuals_error_sfinae (tree decl, tree type, abstract_class_use use,
 }
 
 int
-abstract_virtuals_error_sfinae (tree decl, tree type, tsubst_flags_t complain)
+abstract_virtuals_error (tree decl, tree type,
+			 tsubst_flags_t complain /* = tf_warning_or_error */)
 {
-  return abstract_virtuals_error_sfinae (decl, type, ACU_UNKNOWN, complain);
+  return abstract_virtuals_error (decl, type, ACU_UNKNOWN, complain);
 }
 
 int
-abstract_virtuals_error_sfinae (abstract_class_use use, tree type,
-				tsubst_flags_t complain)
+abstract_virtuals_error (abstract_class_use use, tree type,
+			 tsubst_flags_t complain /* = tf_warning_or_error */)
 {
-  return abstract_virtuals_error_sfinae (NULL_TREE, type, use, complain);
+  return abstract_virtuals_error (NULL_TREE, type, use, complain);
 }
 
-
-/* Wrapper for the above function in the common case of wanting errors.  */
-
-int
-abstract_virtuals_error (tree decl, tree type)
-{
-  return abstract_virtuals_error_sfinae (decl, type, tf_warning_or_error);
-}
-
-int
-abstract_virtuals_error (abstract_class_use use, tree type)
-{
-  return abstract_virtuals_error_sfinae (use, type, tf_warning_or_error);
-}
 
 /* Print an inform about the declaration of the incomplete type TYPE.  */
 
@@ -610,7 +597,7 @@ split_nonconstant_init_1 (tree dest, tree init, bool last,
 		    if (prev == field_index)
 		      break;
 		    tree ptype = TREE_TYPE (prev);
-		    if (type_build_dtor_call (ptype))
+		    if (TYPE_P (ptype) && type_build_dtor_call (ptype))
 		      {
 			tree pcref = build3 (COMPONENT_REF, ptype, dest, prev,
 					     NULL_TREE);
@@ -1010,12 +997,25 @@ check_narrowing (tree type, tree init, tsubst_flags_t complain,
   else if (TREE_CODE (ftype) == REAL_TYPE
 	   && TREE_CODE (type) == REAL_TYPE)
     {
-      if ((same_type_p (ftype, long_double_type_node)
-	   && (same_type_p (type, double_type_node)
-	       || same_type_p (type, float_type_node)))
-	  || (same_type_p (ftype, double_type_node)
-	      && same_type_p (type, float_type_node))
-	  || (TYPE_PRECISION (type) < TYPE_PRECISION (ftype)))
+      if ((extended_float_type_p (ftype) || extended_float_type_p (type))
+	  ? /* "from a floating-point type T to another floating-point type
+	       whose floating-point conversion rank is neither greater than
+	       nor equal to that of T".
+	       So, it is ok if
+	       cp_compare_floating_point_conversion_ranks (ftype, type)
+	       returns -2 (type has greater conversion rank than ftype)
+	       or [-1..1] (type has equal conversion rank as ftype, possibly
+	       different subrank.  Only do this if at least one of the
+	       types is extended floating-point type, otherwise keep doing
+	       what we did before (for the sake of non-standard
+	       backend types).  */
+	    cp_compare_floating_point_conversion_ranks (ftype, type) >= 2
+	  : ((same_type_p (ftype, long_double_type_node)
+	      && (same_type_p (type, double_type_node)
+		  || same_type_p (type, float_type_node)))
+	     || (same_type_p (ftype, double_type_node)
+		 && same_type_p (type, float_type_node))
+	     || (TYPE_PRECISION (type) < TYPE_PRECISION (ftype))))
 	{
 	  if (TREE_CODE (init) == REAL_CST)
 	    {
@@ -1131,6 +1131,15 @@ array_string_literal_compatible_p (tree type, tree init)
   if (ordinary_char_type_p (to_char_type)
       && ordinary_char_type_p (from_char_type))
     return true;
+
+  /* P2513 (C++20/C++23): "an array of char or unsigned char may
+     be initialized by a UTF-8 string literal, or by such a string
+     literal enclosed in braces."  */
+  if (from_char_type == char8_type_node
+      && (to_char_type == char_type_node
+	  || to_char_type == unsigned_char_type_node))
+    return true;
+
   return false;
 }
 
@@ -2502,7 +2511,7 @@ build_functional_cast_1 (location_t loc, tree exp, tree parms,
 
   if (!complete_type_or_maybe_complain (type, NULL_TREE, complain))
     return error_mark_node;
-  if (abstract_virtuals_error_sfinae (ACU_CAST, type, complain))
+  if (abstract_virtuals_error (ACU_CAST, type, complain))
     return error_mark_node;
 
   /* [expr.type.conv]
@@ -2523,7 +2532,7 @@ build_functional_cast_1 (location_t loc, tree exp, tree parms,
   if (parms == NULL_TREE)
     {
       exp = build_value_init (type, complain);
-      exp = get_target_expr_sfinae (exp, complain);
+      exp = get_target_expr (exp, complain);
       return exp;
     }
 

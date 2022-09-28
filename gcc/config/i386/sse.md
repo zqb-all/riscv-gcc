@@ -321,6 +321,11 @@
   [(V16SF "TARGET_AVX512F") (V8SF "TARGET_AVX") V4SF
    (V8DF "TARGET_AVX512F") (V4DF "TARGET_AVX") (V2DF "TARGET_SSE2")])
 
+(define_mode_iterator VF1_VF2_AVX512DQ
+  [(V16SF "TARGET_AVX512F") (V8SF "TARGET_AVX") V4SF
+   (V8DF "TARGET_AVX512DQ") (V4DF "TARGET_AVX512DQ && TARGET_AVX512VL")
+   (V2DF "TARGET_AVX512DQ && TARGET_AVX512VL")])
+
 (define_mode_iterator VFH
   [(V32HF "TARGET_AVX512FP16")
    (V16HF "TARGET_AVX512FP16 && TARGET_AVX512VL")
@@ -1318,9 +1323,9 @@
 
 (define_insn "mov<mode>_internal"
   [(set (match_operand:VMOVE 0 "nonimmediate_operand"
-	 "=v,v ,v ,m")
+	 "=v,v ,v,v ,m")
 	(match_operand:VMOVE 1 "nonimmediate_or_sse_const_operand"
-	 " C,<sseconstm1>,vm,v"))]
+	 " C,<sseconstm1>,BH,vm,v"))]
   "TARGET_SSE
    && (register_operand (operands[0], <MODE>mode)
        || register_operand (operands[1], <MODE>mode))
@@ -1338,7 +1343,7 @@
       gcc_unreachable ();
     }
 }
-  [(set_attr "type" "sselog1,sselog1,ssemov,ssemov")
+  [(set_attr "type" "sselog1,sselog1,sselog1,ssemov,ssemov")
    (set_attr "prefix" "maybe_vex")
    (set (attr "mode")
 	(cond [(match_test "TARGET_AVX")
@@ -1349,7 +1354,7 @@
 	       (and (match_test "<MODE>mode == V2DFmode")
 		    (match_test "TARGET_SSE_PACKED_SINGLE_INSN_OPTIMAL"))
 		 (const_string "V4SF")
-	       (and (eq_attr "alternative" "3")
+	       (and (eq_attr "alternative" "4")
 		    (match_test "TARGET_SSE_TYPELESS_STORES"))
 		 (const_string "V4SF")
 	       (and (eq_attr "alternative" "0")
@@ -23177,6 +23182,14 @@
   "TARGET_SSE4_1"
   "operands[2] = GEN_INT (ROUND_MXCSR);")
 
+;; Note vcvtpd2qq require avx512dq for all vector lengths.
+(define_expand "lrint<mode><sseintvecmodelower>2"
+  [(set (match_operand:<sseintvecmode> 0 "register_operand")
+	(unspec:<sseintvecmode>
+	  [(match_operand:VF1_VF2_AVX512DQ 1 "register_operand")]
+	 UNSPEC_FIX_NOTRUNC))]
+ "TARGET_SSE2")
+
 (define_insn "<sse4_1>_round<ssemodesuffix><avxsizesuffix>"
   [(set (match_operand:VF_128_256 0 "register_operand" "=Yr,*x,x")
 	(unspec:VF_128_256
@@ -23316,6 +23329,55 @@
    (set_attr "prefix" "orig,orig,vex,evex")
    (set_attr "mode" "<MODE>")])
 
+(define_expand "floor<mode>2"
+  [(set (match_operand:VFH 0 "register_operand")
+	(unspec:VFH
+	  [(match_operand:VFH 1 "vector_operand")
+	   (match_dup 2)]
+	  UNSPEC_ROUND))]
+  "TARGET_SSE4_1 && !flag_trapping_math"
+  "operands[2] = GEN_INT (ROUND_FLOOR | ROUND_NO_EXC);")
+
+(define_expand "lfloor<mode><sseintvecmodelower>2"
+  [(match_operand:<sseintvecmode> 0 "register_operand")
+   (match_operand:VF1_VF2_AVX512DQ 1 "register_operand")]
+ "TARGET_SSE4_1 && !flag_trapping_math"
+{
+  rtx tmp = gen_reg_rtx (<MODE>mode);
+  emit_insn (gen_floor<mode>2 (tmp, operands[1]));
+  emit_insn (gen_fix_trunc<mode><sseintvecmodelower>2 (operands[0], tmp));
+  DONE;
+})
+
+(define_expand "ceil<mode>2"
+  [(set (match_operand:VFH 0 "register_operand")
+	(unspec:VFH
+	  [(match_operand:VFH 1 "vector_operand")
+	   (match_dup 2)]
+	  UNSPEC_ROUND))]
+  "TARGET_SSE4_1 && !flag_trapping_math"
+  "operands[2] = GEN_INT (ROUND_CEIL | ROUND_NO_EXC);")
+
+(define_expand "lceil<mode><sseintvecmodelower>2"
+  [(match_operand:<sseintvecmode> 0 "register_operand")
+   (match_operand:VF1_VF2_AVX512DQ 1 "register_operand")]
+ "TARGET_SSE4_1 && !flag_trapping_math"
+{
+  rtx tmp = gen_reg_rtx (<MODE>mode);
+  emit_insn (gen_ceil<mode>2 (tmp, operands[1]));
+  emit_insn (gen_fix_trunc<mode><sseintvecmodelower>2 (operands[0], tmp));
+  DONE;
+})
+
+(define_expand "btrunc<mode>2"
+  [(set (match_operand:VFH 0 "register_operand")
+	(unspec:VFH
+	  [(match_operand:VFH 1 "vector_operand")
+	   (match_dup 2)]
+	  UNSPEC_ROUND))]
+  "TARGET_SSE4_1 && !flag_trapping_math"
+  "operands[2] = GEN_INT (ROUND_TRUNC | ROUND_NO_EXC);")
+
 (define_expand "round<mode>2"
   [(set (match_dup 3)
 	(plus:VF
@@ -23348,6 +23410,17 @@
 
   operands[3] = gen_reg_rtx (<MODE>mode);
   operands[4] = GEN_INT (ROUND_TRUNC);
+})
+
+(define_expand "lround<mode><sseintvecmodelower>2"
+  [(match_operand:<sseintvecmode> 0 "register_operand")
+   (match_operand:VF1_VF2_AVX512DQ 1 "register_operand")]
+ "TARGET_SSE4_1 && !flag_trapping_math"
+{
+  rtx tmp = gen_reg_rtx (<MODE>mode);
+  emit_insn (gen_round<mode>2 (tmp, operands[1]));
+  emit_insn (gen_fix_trunc<mode><sseintvecmodelower>2 (operands[0], tmp));
+  DONE;
 })
 
 (define_expand "round<mode>2_sfix"
@@ -23867,6 +23940,13 @@
   [(set_attr "type" "sse")
    (set_attr "prefix" "evex")
    (set_attr "mode" "XI")])
+
+(define_expand "exp2<mode>2"
+  [(set (match_operand:VF_512 0 "register_operand")
+	(unspec:VF_512
+	  [(match_operand:VF_512 1 "vector_operand")]
+	  UNSPEC_EXP2))]
+  "TARGET_AVX512ER")
 
 (define_insn "avx512er_exp2<mode><mask_name><round_saeonly_name>"
   [(set (match_operand:VF_512 0 "register_operand" "=v")
@@ -28935,7 +29015,7 @@
 
   for (i = 4; i < 7; i++)
     XVECEXP (operands[2], 0, i)
-      = gen_rtx_SET (xmm_regs[i], CONST0_RTX (V2DImode));
+      = gen_rtx_CLOBBER (VOIDmode, xmm_regs[i]);
 
   XVECEXP (operands[2], 0, 7)
     = gen_rtx_CLOBBER (VOIDmode, gen_rtx_REG (CCmode, FLAGS_REG));
@@ -28992,7 +29072,7 @@
 
   for (i = 4; i < 7; i++)
     XVECEXP (operands[2], 0, i + 1)
-      = gen_rtx_SET (xmm_regs[i], CONST0_RTX (V2DImode));
+      = gen_rtx_CLOBBER (VOIDmode, xmm_regs[i]);
 
   XVECEXP (operands[2], 0, 8)
     = gen_rtx_CLOBBER (VOIDmode, gen_rtx_REG (CCmode, FLAGS_REG));

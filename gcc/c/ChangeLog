@@ -1,3 +1,62 @@
+2022-09-27  Jakub Jelinek  <jakub@redhat.com>
+
+	* c-lang.h (current_omp_begin_assumes): Declare.
+	* c-parser.cc: Include bitmap.h.
+	(c_parser_omp_end_declare_target): Rename to ...
+	(c_parser_omp_end): ... this.  Handle also end assumes.
+	(c_parser_omp_begin, c_parser_omp_assumption_clauses,
+	c_parser_omp_assumes, c_parser_omp_assume): New functions.
+	(c_parser_translation_unit): Also diagnose #pragma omp begin assumes
+	without corresponding #pragma omp end assumes.
+	(c_parser_pragma): Use %s in may only be used at file scope
+	diagnostics to decrease number of translatable messages.  Handle
+	PRAGMA_OMP_BEGIN and PRAGMA_OMP_ASSUMES.  Handle PRAGMA_OMP_END
+	rather than PRAGMA_OMP_END_DECLARE_TARGET and call c_parser_omp_end
+	for it rather than c_parser_omp_end_declare_target.
+	(c_parser_omp_construct): Handle PRAGMA_OMP_ASSUME.
+	* c-decl.cc (current_omp_begin_assumes): Define.
+
+2022-09-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/106981
+	* c-typeck.cc (c_tree_equal): Only strip NON_LVALUE_EXPRs at the
+	start.  For CONSTANT_CLASS_P or CASE_CONVERT: return false if t1 and
+	t2 have different types.
+
+2022-09-22  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c/106830
+	* c-parser.cc (c_parser_initelt): Initialize m_decimal.
+	(c_parser_cast_expression): Likewise.
+	(c_parser_alignof_expression): Likewise.
+	(c_parser_postfix_expression_after_paren_type): Likewise.
+	(c_parser_postfix_expression_after_primary): Likewise.
+	(c_parser_expression): Likewise.
+	(c_parser_omp_variable_list): Likewise.
+	(c_parser_transaction_expression): Likewise.
+	* c-tree.h (c_expr::set_error): Likewise.
+	* c-typeck.cc (c_expr_sizeof_expr): Likewise.
+	(parser_build_unary_op): Likewise.
+	(parser_build_binary_op): Likewise.
+	(digest_init): Likewise.
+	(pop_init_level): Likewise.
+	* gimple-parser.cc (c_parser_gimple_call_internal): Likewise.
+
+2022-09-19  Marek Polacek  <polacek@redhat.com>
+
+	PR c/106947
+	* c-typeck.cc (maybe_warn_for_null_address): Don't emit stray
+	notes.
+
+2022-09-15  Richard Biener  <rguenther@suse.de>
+
+	* c-decl.cc (build_void_list_node): Remove.
+
+2022-09-14  Julian Brown  <julian@codesourcery.com>
+
+	* c-typeck.cc (c_finish_omp_clauses): Remove whole mapping node group
+	on error.
+
 2022-09-07  Joseph Myers  <joseph@codesourcery.com>
 
 	* c-parser.cc (c_parser_static_assert_declaration_no_semi)

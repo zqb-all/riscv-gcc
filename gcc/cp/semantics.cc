@@ -1042,7 +1042,7 @@ finish_if_stmt_cond (tree orig_cond, tree if_stmt)
     {
       maybe_warn_for_constant_evaluated (cond, /*constexpr_if=*/true);
       cond = instantiate_non_dependent_expr (cond);
-      cond = cxx_constant_value (cond, NULL_TREE);
+      cond = cxx_constant_value (cond);
     }
   else
     {
@@ -3318,7 +3318,7 @@ finish_compound_literal (tree type, tree compound_literal,
       /* The CONSTRUCTOR is now an initializer, not a compound literal.  */
       if (TREE_CODE (compound_literal) == CONSTRUCTOR)
 	TREE_HAS_CONSTRUCTOR (compound_literal) = false;
-      compound_literal = get_target_expr_sfinae (compound_literal, complain);
+      compound_literal = get_target_expr (compound_literal, complain);
     }
   else
     /* For e.g. int{42} just make sure it's a prvalue.  */
@@ -3362,6 +3362,13 @@ finish_translation_unit (void)
 	error ("%<#pragma omp declare target%> without corresponding "
 	       "%<#pragma omp end declare target%>");
       vec_safe_truncate (scope_chain->omp_declare_target_attribute, 0);
+    }
+  if (vec_safe_length (scope_chain->omp_begin_assumes))
+    {
+      if (!errorcount)
+	error ("%<#pragma omp begin assumes%> without corresponding "
+	       "%<#pragma omp end assumes%>");
+      vec_safe_truncate (scope_chain->omp_begin_assumes, 0);
     }
 }
 
@@ -6755,10 +6762,17 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	  break;
 	}
 
+  tree *grp_start_p = NULL, grp_sentinel = NULL_TREE;
+
   for (pc = &clauses, c = clauses; c ; c = *pc)
     {
       bool remove = false;
       bool field_ok = false;
+
+      /* We've reached the end of a list of expanded nodes.  Reset the group
+	 start pointer.  */
+      if (c == grp_sentinel)
+	grp_start_p = NULL;
 
       switch (OMP_CLAUSE_CODE (c))
 	{
@@ -7982,6 +7996,9 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	  t = OMP_CLAUSE_DECL (c);
 	  if (TREE_CODE (t) == TREE_LIST)
 	    {
+	      grp_start_p = pc;
+	      grp_sentinel = OMP_CLAUSE_CHAIN (c);
+
 	      if (handle_omp_array_sections (c, ort))
 		remove = true;
 	      else
@@ -8109,6 +8126,10 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	      t = TREE_OPERAND (t, 1);
 	      STRIP_NOPS (t);
 	    }
+	  if (TREE_CODE (t) == COMPONENT_REF
+	      && invalid_nonstatic_memfn_p (EXPR_LOCATION (t), t,
+					    tf_warning_or_error))
+	    remove = true;
 	  indir_component_ref_p = false;
 	  if (TREE_CODE (t) == COMPONENT_REF
 	      && (TREE_CODE (TREE_OPERAND (t, 0)) == INDIRECT_REF
@@ -8353,6 +8374,9 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 		       && (OMP_CLAUSE_MAP_KIND (c)
 			   != GOMP_MAP_ATTACH_DETACH))
 		{
+		  grp_start_p = pc;
+		  grp_sentinel = OMP_CLAUSE_CHAIN (c);
+
 		  tree c2 = build_omp_clause (OMP_CLAUSE_LOCATION (c),
 					      OMP_CLAUSE_MAP);
 		  if (TREE_CODE (t) == COMPONENT_REF)
@@ -8763,7 +8787,18 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	}
 
       if (remove)
-	*pc = OMP_CLAUSE_CHAIN (c);
+	{
+	  if (grp_start_p)
+	    {
+	      /* If we found a clause to remove, we want to remove the whole
+		 expanded group, otherwise gimplify can get confused.  */
+	      *grp_start_p = grp_sentinel;
+	      pc = grp_start_p;
+	      grp_start_p = NULL;
+	    }
+	  else
+	    *pc = OMP_CLAUSE_CHAIN (c);
+	}
       else
 	pc = &OMP_CLAUSE_CHAIN (c);
     }
@@ -11329,7 +11364,7 @@ finish_decltype_type (tree expr, bool id_expression_or_member_access_p,
     }
   else if (processing_template_decl)
     {
-      expr = instantiate_non_dependent_expr_sfinae (expr, complain|tf_decltype);
+      expr = instantiate_non_dependent_expr (expr, complain|tf_decltype);
       if (expr == error_mark_node)
 	return error_mark_node;
       /* Keep processing_template_decl cleared for the rest of the function
@@ -12016,6 +12051,12 @@ trait_expr_value (cp_trait_kind kind, tree type1, tree type2)
     case CPTK_IS_NOTHROW_CONSTRUCTIBLE:
       return is_nothrow_xible (INIT_EXPR, type1, type2);
 
+    case CPTK_IS_CONVERTIBLE:
+      return is_convertible (type1, type2);
+
+    case CPTK_IS_NOTHROW_CONVERTIBLE:
+      return is_nothrow_convertible (type1, type2);
+
     case CPTK_REF_CONSTRUCTS_FROM_TEMPORARY:
       return ref_xes_from_temporary (type1, type2, /*direct_init=*/true);
 
@@ -12137,6 +12178,8 @@ finish_trait_expr (location_t loc, cp_trait_kind kind, tree type1, tree type2)
     case CPTK_IS_TRIVIALLY_CONSTRUCTIBLE:
     case CPTK_IS_NOTHROW_ASSIGNABLE:
     case CPTK_IS_NOTHROW_CONSTRUCTIBLE:
+    case CPTK_IS_CONVERTIBLE:
+    case CPTK_IS_NOTHROW_CONVERTIBLE:
     case CPTK_REF_CONSTRUCTS_FROM_TEMPORARY:
     case CPTK_REF_CONVERTS_FROM_TEMPORARY:
       if (!check_trait_type (type1)
@@ -12500,7 +12543,7 @@ cp_build_bit_cast (location_t loc, tree type, tree arg,
   SET_EXPR_LOCATION (ret, loc);
 
   if (!processing_template_decl && CLASS_TYPE_P (type))
-    ret = get_target_expr_sfinae (ret, complain);
+    ret = get_target_expr (ret, complain);
 
   return ret;
 }

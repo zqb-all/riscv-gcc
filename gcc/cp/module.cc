@@ -4734,7 +4734,8 @@ friend_from_decl_list (tree frnd)
       if (TYPE_P (frnd))
 	{
 	  res = TYPE_NAME (frnd);
-	  if (CLASSTYPE_TEMPLATE_INFO (frnd))
+	  if (CLASS_TYPE_P (frnd)
+	      && CLASSTYPE_TEMPLATE_INFO (frnd))
 	    tmpl = CLASSTYPE_TI_TEMPLATE (frnd);
 	}
       else if (DECL_TEMPLATE_INFO (frnd))
@@ -7788,8 +7789,9 @@ trees_out::decl_value (tree decl, depset *dep)
 	    }
 	  else
 	    {
-	      tree_node (CLASSTYPE_TI_TEMPLATE (TREE_TYPE (inner)));
-	      tree_node (CLASSTYPE_TI_ARGS (TREE_TYPE (inner)));
+	      tree ti = get_template_info (inner);
+	      tree_node (TI_TEMPLATE (ti));
+	      tree_node (TI_ARGS (ti));
 	    }
 	}
       tree_node (get_constraints (decl));
@@ -8183,13 +8185,18 @@ trees_in::decl_value ()
 	/* Set the TEMPLATE_DECL's type.  */
 	TREE_TYPE (decl) = TREE_TYPE (inner);
 
-      if (mk & MK_template_mask
-	  || mk == MK_partial)
+      /* Add to specialization tables now that constraints etc are
+	 added.  */
+      if (mk == MK_partial)
 	{
-	  /* Add to specialization tables now that constraints etc are
-	     added.  */
-	  bool is_type = mk == MK_partial || !(mk & MK_tmpl_decl_mask);
-
+	  bool is_type = TREE_CODE (inner) == TYPE_DECL;
+	  spec.spec = is_type ? type : inner;
+	  add_mergeable_specialization (!is_type, false,
+					&spec, decl, spec_flags);
+	}
+      else if (mk & MK_template_mask)
+	{
+	  bool is_type = !(mk & MK_tmpl_decl_mask);
 	  spec.spec = is_type ? type : mk & MK_tmpl_tmpl_mask ? inner : decl;
 	  add_mergeable_specialization (!is_type,
 					!is_type && mk & MK_tmpl_alias_mask,
@@ -8921,6 +8928,7 @@ trees_out::type_node (tree type)
       if (streaming_p ())
 	u (PACK_EXPANSION_LOCAL_P (type));
       tree_node (PACK_EXPANSION_PARAMETER_PACKS (type));
+      tree_node (PACK_EXPANSION_EXTRA_ARGS (type));
       break;
 
     case TYPENAME_TYPE:
@@ -9454,12 +9462,14 @@ trees_in::tree_node (bool is_use)
 	    {
 	      bool local = u ();
 	      tree param_packs = tree_node ();
+	      tree extra_args = tree_node ();
 	      if (!get_overrun ())
 		{
 		  tree expn = cxx_make_type (TYPE_PACK_EXPANSION);
 		  SET_TYPE_STRUCTURAL_EQUALITY (expn);
 		  PACK_EXPANSION_PATTERN (expn) = res;
 		  PACK_EXPANSION_PARAMETER_PACKS (expn) = param_packs;
+		  PACK_EXPANSION_EXTRA_ARGS (expn) = extra_args;
 		  PACK_EXPANSION_LOCAL_P (expn) = local;
 		  res = expn;
 		}
@@ -10621,9 +10631,10 @@ trees_out::key_mergeable (int tag, merge_kind mk, tree decl, tree inner,
 
 	case MK_partial:
 	  {
+	    tree ti = get_template_info (inner);
 	    key.constraints = get_constraints (inner);
-	    key.ret = CLASSTYPE_TI_TEMPLATE (TREE_TYPE (inner));
-	    key.args = CLASSTYPE_TI_ARGS (TREE_TYPE (inner));
+	    key.ret = TI_TEMPLATE (ti);
+	    key.args = TI_ARGS (ti);
 	  }
 	  break;
 	}
@@ -10862,8 +10873,8 @@ trees_in::key_mergeable (int tag, merge_kind mk, tree decl, tree inner,
 	       spec; spec = TREE_CHAIN (spec))
 	    {
 	      tree tmpl = TREE_VALUE (spec);
-	      if (template_args_equal (key.args,
-				       CLASSTYPE_TI_ARGS (TREE_TYPE (tmpl)))
+	      tree ti = get_template_info (tmpl);
+	      if (template_args_equal (key.args, TI_ARGS (ti))
 		  && cp_tree_equal (key.constraints,
 				    get_constraints
 				    (DECL_TEMPLATE_RESULT (tmpl))))
@@ -11377,8 +11388,7 @@ has_definition (tree decl)
 
     case VAR_DECL:
       if (DECL_LANG_SPECIFIC (decl)
-	  && DECL_TEMPLATE_INFO (decl)
-	  && DECL_USE_TEMPLATE (decl) < 2)
+	  && DECL_TEMPLATE_INFO (decl))
 	return DECL_INITIAL (decl);
       else
 	{
@@ -12121,7 +12131,7 @@ trees_in::read_class_def (tree defn, tree maybe_template)
 	    {
 	      tree f = TREE_VALUE (friend_classes);
 
-	      if (TYPE_P (f))
+	      if (CLASS_TYPE_P (f))
 		{
 		  CLASSTYPE_BEFRIENDING_CLASSES (f)
 		    = tree_cons (NULL_TREE, type,
@@ -12494,11 +12504,14 @@ depset::hash::make_dependency (tree decl, entity_kind ek)
 
   if (!dep)
     {
-      if (DECL_IMPLICIT_TYPEDEF_P (decl)
-	  /* ... not an enum, for instance.  */
-	  && RECORD_OR_UNION_TYPE_P (TREE_TYPE (decl))
-	  && TYPE_LANG_SPECIFIC (TREE_TYPE (decl))
-	  && CLASSTYPE_USE_TEMPLATE (TREE_TYPE (decl)) == 2)
+      if ((DECL_IMPLICIT_TYPEDEF_P (decl)
+	   /* ... not an enum, for instance.  */
+	   && RECORD_OR_UNION_TYPE_P (TREE_TYPE (decl))
+	   && TYPE_LANG_SPECIFIC (TREE_TYPE (decl))
+	   && CLASSTYPE_USE_TEMPLATE (TREE_TYPE (decl)) == 2)
+	  || (VAR_P (decl)
+	      && DECL_LANG_SPECIFIC (decl)
+	      && DECL_USE_TEMPLATE (decl) == 2))
 	{
 	  /* A partial or explicit specialization. Partial
 	     specializations might not be in the hash table, because
@@ -12511,7 +12524,7 @@ depset::hash::make_dependency (tree decl, entity_kind ek)
 	     dep_hash, and then convert the dep we just found into a
 	     redirect.  */
 
-	  tree ti = TYPE_TEMPLATE_INFO (TREE_TYPE (decl));
+	  tree ti = get_template_info (decl);
 	  tree tmpl = TI_TEMPLATE (ti);
 	  tree partial = NULL_TREE;
 	  for (tree spec = DECL_TEMPLATE_SPECIALIZATIONS (tmpl);
@@ -15764,6 +15777,8 @@ module_state::write_location (bytes_out &sec, location_t loc)
 	range.m_start = UNKNOWN_LOCATION;
       write_location (sec, range.m_start);
       write_location (sec, range.m_finish);
+      unsigned discriminator = get_discriminator_from_adhoc_loc (line_table, loc);
+      sec.u (discriminator);
     }
   else if (loc >= LINEMAPS_MACRO_LOWEST_LOCATION (line_table))
     {
@@ -15889,8 +15904,9 @@ module_state::read_location (bytes_in &sec) const
 	if (range.m_start == UNKNOWN_LOCATION)
 	  range.m_start = locus;
 	range.m_finish = read_location (sec);
+	unsigned discriminator = sec.u ();
 	if (locus != loc && range.m_start != loc && range.m_finish != loc)
-	  locus = get_combined_adhoc_loc (line_table, locus, range, NULL);
+	  locus = get_combined_adhoc_loc (line_table, locus, range, NULL, discriminator);
       }
       break;
 

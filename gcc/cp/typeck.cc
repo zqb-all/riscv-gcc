@@ -71,7 +71,8 @@ static bool is_std_forward_p (tree);
    complete type when this function returns.  */
 
 tree
-require_complete_type_sfinae (tree value, tsubst_flags_t complain)
+require_complete_type (tree value,
+		       tsubst_flags_t complain /* = tf_warning_or_error */)
 {
   tree type;
 
@@ -94,12 +95,6 @@ require_complete_type_sfinae (tree value, tsubst_flags_t complain)
     return value;
   else
     return error_mark_node;
-}
-
-tree
-require_complete_type (tree value)
-{
-  return require_complete_type_sfinae (value, tf_warning_or_error);
 }
 
 /* Try to complete TYPE, if it is incomplete.  For example, if TYPE is
@@ -272,6 +267,133 @@ merge_type_attributes_from (tree type, tree other_type)
   return cp_build_type_attribute_variant (type, attrs);
 }
 
+/* Compare floating point conversion ranks and subranks of T1 and T2
+   types.  If T1 and T2 have unordered conversion ranks, return 3.
+   If T1 has greater conversion rank than T2, return 2.
+   If T2 has greater conversion rank than T1, return -2.
+   If T1 has equal conversion rank as T2, return -1, 0 or 1 depending
+   on if T1 has smaller, equal or greater conversion subrank than
+   T2.  */
+
+int
+cp_compare_floating_point_conversion_ranks (tree t1, tree t2)
+{
+  tree mv1 = TYPE_MAIN_VARIANT (t1);
+  tree mv2 = TYPE_MAIN_VARIANT (t2);
+  int extended1 = 0;
+  int extended2 = 0;
+
+  if (mv1 == mv2)
+    return 0;
+
+  for (int i = 0; i < NUM_FLOATN_NX_TYPES; ++i)
+    {
+      if (mv1 == FLOATN_NX_TYPE_NODE (i))
+	extended1 = i + 1;
+      if (mv2 == FLOATN_NX_TYPE_NODE (i))
+	extended2 = i + 1;
+    }
+  if (extended2 && !extended1)
+    {
+      int ret = cp_compare_floating_point_conversion_ranks (t2, t1);
+      return ret == 3 ? 3 : -ret;
+    }
+
+  const struct real_format *fmt1 = REAL_MODE_FORMAT (TYPE_MODE (t1));
+  const struct real_format *fmt2 = REAL_MODE_FORMAT (TYPE_MODE (t2));
+  gcc_assert (fmt1->b == 2 && fmt2->b == 2);
+  /* For {ibm,mips}_extended_format formats, the type has variable
+     precision up to ~2150 bits when the first double is around maximum
+     representable double and second double is subnormal minimum.
+     So, e.g. for __ibm128 vs. std::float128_t, they have unordered
+     ranks.  */
+  int p1 = (MODE_COMPOSITE_P (TYPE_MODE (t1))
+	    ? fmt1->emax - fmt1->emin + fmt1->p - 1 : fmt1->p);
+  int p2 = (MODE_COMPOSITE_P (TYPE_MODE (t2))
+	    ? fmt2->emax - fmt2->emin + fmt2->p - 1 : fmt2->p);
+  /* The rank of a floating point type T is greater than the rank of
+     any floating-point type whose set of values is a proper subset
+     of the set of values of T.  */
+  if ((p1 > p2 && fmt1->emax >= fmt2->emax)
+       || (p1 == p2 && fmt1->emax > fmt2->emax))
+    return 2;
+  if ((p1 < p2 && fmt1->emax <= fmt2->emax)
+       || (p1 == p2 && fmt1->emax < fmt2->emax))
+    return -2;
+  if ((p1 > p2 && fmt1->emax < fmt2->emax)
+       || (p1 < p2 && fmt1->emax > fmt2->emax))
+    return 3;
+  if (!extended1 && !extended2)
+    {
+      /* The rank of long double is greater than the rank of double, which
+	 is greater than the rank of float.  */
+      if (t1 == long_double_type_node)
+	return 2;
+      else if (t2 == long_double_type_node)
+	return -2;
+      if (t1 == double_type_node)
+	return 2;
+      else if (t2 == double_type_node)
+	return -2;
+      if (t1 == float_type_node)
+	return 2;
+      else if (t2 == float_type_node)
+	return -2;
+      return 0;
+    }
+  /* Two extended floating-point types with the same set of values have equal
+     ranks.  */
+  if (extended1 && extended2)
+    {
+      if ((extended1 <= NUM_FLOATN_TYPES) == (extended2 <= NUM_FLOATN_TYPES))
+	{
+	  /* Prefer higher extendedN value.  */
+	  if (extended1 > extended2)
+	    return 1;
+	  else if (extended1 < extended2)
+	    return -1;
+	  else
+	    return 0;
+	}
+      else if (extended1 <= NUM_FLOATN_TYPES)
+	/* Prefer _FloatN type over _FloatMx type.  */
+	return 1;
+      else if (extended2 <= NUM_FLOATN_TYPES)
+	return -1;
+      else
+	return 0;
+    }
+
+  /* gcc_assert (extended1 && !extended2);  */
+  tree *p;
+  int cnt = 0;
+  for (p = &float_type_node; p <= &long_double_type_node; ++p)
+    {
+      const struct real_format *fmt3 = REAL_MODE_FORMAT (TYPE_MODE (*p));
+      gcc_assert (fmt3->b == 2);
+      int p3 = (MODE_COMPOSITE_P (TYPE_MODE (*p))
+		? fmt3->emax - fmt3->emin + fmt3->p - 1 : fmt3->p);
+      if (p1 == p3 && fmt1->emax == fmt3->emax)
+	++cnt;
+    }
+  /* An extended floating-point type with the same set of values
+     as exactly one cv-unqualified standard floating-point type
+     has a rank equal to the rank of that standard floating-point
+     type.
+
+     An extended floating-point type with the same set of values
+     as more than one cv-unqualified standard floating-point type
+     has a rank equal to the rank of double.
+
+     Thus, if the latter is true and t2 is long double, t2
+     has higher rank.  */
+  if (cnt > 1 && mv2 == long_double_type_node)
+    return -2;
+  /* Otherwise, they have equal rank, but extended types
+     (other than std::bfloat16_t) have higher subrank.  */
+  return 1;
+}
+
 /* Return the common type for two arithmetic types T1 and T2 under the
    usual arithmetic conversions.  The default conversions have already
    been applied, and enumerated types converted to their compatible
@@ -341,6 +463,23 @@ cp_common_type (tree t1, tree t2)
     return build_type_attribute_variant (t1, attributes);
   if (code2 == REAL_TYPE && code1 != REAL_TYPE)
     return build_type_attribute_variant (t2, attributes);
+
+  if (code1 == REAL_TYPE
+      && (extended_float_type_p (t1) || extended_float_type_p (t2)))
+    {
+      tree mv1 = TYPE_MAIN_VARIANT (t1);
+      tree mv2 = TYPE_MAIN_VARIANT (t2);
+      if (mv1 == mv2)
+	return build_type_attribute_variant (t1, attributes);
+
+      int cmpret = cp_compare_floating_point_conversion_ranks (mv1, mv2);
+      if (cmpret == 3)
+	return error_mark_node;
+      else if (cmpret >= 0)
+	return build_type_attribute_variant (t1, attributes);
+      else
+	return build_type_attribute_variant (t2, attributes);
+    }
 
   /* Both real or both integers; use the one with greater precision.  */
   if (TYPE_PRECISION (t1) > TYPE_PRECISION (t2))
@@ -2201,7 +2340,8 @@ invalid_nonstatic_memfn_p (location_t loc, tree expr, tsubst_flags_t complain)
     return false;
   if (is_overloaded_fn (expr) && !really_overloaded_fn (expr))
     expr = get_first_fn (expr);
-  if (DECL_NONSTATIC_MEMBER_FUNCTION_P (expr))
+  if (TREE_TYPE (expr)
+      && DECL_NONSTATIC_MEMBER_FUNCTION_P (expr))
     {
       if (complain & tf_error)
 	{
@@ -3899,7 +4039,7 @@ cp_build_array_ref (location_t loc, tree array, tree idx,
 	|= (CP_TYPE_VOLATILE_P (type) | TREE_SIDE_EFFECTS (array));
       TREE_THIS_VOLATILE (rval)
 	|= (CP_TYPE_VOLATILE_P (type) | TREE_THIS_VOLATILE (array));
-      ret = require_complete_type_sfinae (rval, complain);
+      ret = require_complete_type (rval, complain);
       protected_set_expr_location (ret, loc);
       if (non_lvalue)
 	ret = non_lvalue_loc (loc, ret);
@@ -4464,7 +4604,7 @@ convert_arguments (tree typelist, vec<tree, va_gc> **values, tree fndecl,
 	    /* Don't do ellipsis conversion for __built_in_constant_p
 	       as this will result in spurious errors for non-trivial
 	       types.  */
-	    val = require_complete_type_sfinae (val, complain);
+	    val = require_complete_type (val, complain);
 	  else
 	    val = convert_arg_to_ellipsis (val, complain);
 
@@ -5041,7 +5181,20 @@ cp_build_binary_op (const op_location_t &location,
        = targetm.invalid_binary_op (code, type0, type1)))
     {
       if (complain & tf_error)
-	error (invalid_op_diag);
+	{
+	  if (code0 == REAL_TYPE
+	      && code1 == REAL_TYPE
+	      && (extended_float_type_p (type0)
+		  || extended_float_type_p (type1))
+	      && cp_compare_floating_point_conversion_ranks (type0,
+							     type1) == 3)
+	    {
+	      rich_location richloc (line_table, location);
+	      binary_op_error (&richloc, code, type0, type1);
+	    }
+	  else
+	    error (invalid_op_diag);
+	}
       return error_mark_node;
     }
 
@@ -5911,6 +6064,19 @@ cp_build_binary_op (const op_location_t &location,
       && (shorten || common || short_compare))
     {
       result_type = cp_common_type (type0, type1);
+      if (result_type == error_mark_node
+	  && code0 == REAL_TYPE
+	  && code1 == REAL_TYPE
+	  && (extended_float_type_p (type0) || extended_float_type_p (type1))
+	  && cp_compare_floating_point_conversion_ranks (type0, type1) == 3)
+	{
+	  if (complain & tf_error)
+	    {
+	      rich_location richloc (line_table, location);
+	      binary_op_error (&richloc, code, type0, type1);
+	    }
+	  return error_mark_node;
+	}
       if (complain & tf_warning)
 	{
 	  do_warn_double_promotion (result_type, type0, type1,
@@ -6264,7 +6430,7 @@ cp_build_binary_op (const op_location_t &location,
 		     instrument_expr, result);
 
   if (resultcode == SPACESHIP_EXPR && !processing_template_decl)
-    result = get_target_expr_sfinae (result, complain);
+    result = get_target_expr (result, complain);
 
   if (!c_inhibit_evaluation_warnings)
     {
@@ -8016,7 +8182,7 @@ build_static_cast_1 (location_t loc, tree type, tree expr, bool c_cast_p,
   /* [class.abstract]
      An abstract class shall not be used ... as the type of an explicit
      conversion.  */
-  if (abstract_virtuals_error_sfinae (ACU_CAST, type, complain))
+  if (abstract_virtuals_error (ACU_CAST, type, complain))
     return error_mark_node;
 
   /* [expr.static.cast]
@@ -9144,7 +9310,7 @@ cp_build_modify_expr (location_t loc, tree lhs, enum tree_code modifycode,
     }
   else
     {
-      lhs = require_complete_type_sfinae (lhs, complain);
+      lhs = require_complete_type (lhs, complain);
       if (lhs == error_mark_node)
 	return error_mark_node;
 
@@ -10123,7 +10289,7 @@ convert_for_initialization (tree exp, tree type, tree rhs, int flags,
     }
 
   if (exp != 0)
-    exp = require_complete_type_sfinae (exp, complain);
+    exp = require_complete_type (exp, complain);
   if (exp == error_mark_node)
     return error_mark_node;
 
@@ -10876,9 +11042,13 @@ check_return_expr (tree retval, bool *no_warning)
 	 the conditions for the named return value optimization.  */
       bool converted = false;
       tree moved;
-      /* This is only interesting for class type.  */
-      if (CLASS_TYPE_P (functype)
-	  && (moved = treat_lvalue_as_rvalue_p (retval, /*return*/true)))
+      /* Until C++23, this was only interesting for class type, but in C++23,
+	 we should do the below when we're converting rom/to a class/reference
+	 (a non-scalar type).  */
+	if ((cxx_dialect < cxx23
+	     ? CLASS_TYPE_P (functype)
+	     : !SCALAR_TYPE_P (functype) || !SCALAR_TYPE_P (TREE_TYPE (retval)))
+	    && (moved = treat_lvalue_as_rvalue_p (retval, /*return*/true)))
 	{
 	  if (cxx_dialect < cxx20)
 	    {

@@ -77,7 +77,7 @@ n = SEW/LMUL
 
 TODO: FP16 vector needs support of 'zvfh', we don't support it yet.  */
 
-/* Return 'REQUIREMENT' for machine_mode 'MODE'.  
+/* Return 'REQUIREMENT' for machine_mode 'MODE'.
    For example: 'MODE' = VNx64BImode needs TARGET_MIN_VLEN > 32.  */
 #ifndef ENTRY
 #define ENTRY(MODE, REQUIREMENT)

@@ -4623,7 +4623,7 @@ cxx_init_decl_processing (void)
   record_unknown_type (init_list_type_node, "init list");
 
   /* Used when parsing to distinguish parameter-lists () and (void).  */
-  explicit_void_list_node = build_void_list_node ();
+  explicit_void_list_node = build_tree_list (NULL_TREE, void_type_node);
 
   {
     /* Make sure we get a unique function type, so we can give
@@ -8140,6 +8140,9 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	    d_init = build_x_compound_expr_from_list (d_init, ELK_INIT,
 						      tf_warning_or_error);
 	  d_init = resolve_nondeduced_context (d_init, tf_warning_or_error);
+	  /* Force auto deduction now.  Use tf_none to avoid redundant warnings
+	     on deprecated-14.C.  */
+	  mark_single_function (d_init, tf_none);
 	}
       enum auto_deduction_context adc = adc_variable_type;
       if (DECL_DECOMPOSITION_P (decl))
@@ -8177,6 +8180,12 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	  return;
 	}
       cp_apply_type_quals_to_decl (cp_type_quals (type), decl);
+
+      /* Update the type of the corresponding TEMPLATE_DECL to match.  */
+      if (DECL_LANG_SPECIFIC (decl)
+	  && DECL_TEMPLATE_INFO (decl)
+	  && DECL_TEMPLATE_RESULT (DECL_TI_TEMPLATE (decl)) == decl)
+	TREE_TYPE (DECL_TI_TEMPLATE (decl)) = type;
     }
 
   if (ensure_literal_type_for_constexpr_object (decl) == error_mark_node)
@@ -12086,12 +12095,7 @@ grokdeclarator (const cp_declarator *declarator,
     }
 
   if (declspecs->conflicting_specifiers_p)
-    {
-      error_at (min_location (declspecs->locations[ds_typedef],
-			      declspecs->locations[ds_storage_class]),
-		"conflicting specifiers in declaration of %qs", name);
-      return error_mark_node;
-    }
+    return error_mark_node;
 
   /* Extract the basic type from the decl-specifier-seq.  */
   type = declspecs->type;
@@ -15296,8 +15300,25 @@ grok_op_properties (tree decl, bool complain)
      an enumeration, or a reference to an enumeration.  13.4.0.6 */
   if (! methodp || DECL_STATIC_FUNCTION_P (decl))
     {
+      if (operator_code == CALL_EXPR)
+	{
+	  if (! DECL_STATIC_FUNCTION_P (decl))
+	    {
+	      error_at (loc, "%qD must be a member function", decl);
+	      return false;
+	    }
+	  if (cxx_dialect < cxx23
+	      /* For lambdas we diagnose static lambda specifier elsewhere.  */
+	      && ! LAMBDA_FUNCTION_P (decl)
+	      /* For instantiations, we have diagnosed this already.  */
+	      && ! DECL_USE_TEMPLATE (decl))
+	    pedwarn (loc, OPT_Wc__23_extensions, "%qD may be a static member "
+	      "function only with %<-std=c++23%> or %<-std=gnu++23%>", decl);
+	  /* There are no further restrictions on the arguments to an
+	     overloaded "operator ()".  */
+	  return true;
+	}
       if (operator_code == TYPE_EXPR
-	  || operator_code == CALL_EXPR
 	  || operator_code == COMPONENT_REF
 	  || operator_code == ARRAY_REF
 	  || operator_code == NOP_EXPR)
@@ -18447,14 +18468,6 @@ cp_tree_node_structure (union lang_tree_node * t)
     }
 }
 
-/* Build the void_list_node (void_type_node having been created).  */
-tree
-build_void_list_node (void)
-{
-  tree t = build_tree_list (NULL_TREE, void_type_node);
-  return t;
-}
-
 bool
 cp_missing_noreturn_ok_p (tree decl)
 {
@@ -18553,8 +18566,8 @@ build_explicit_specifier (tree expr, tsubst_flags_t complain)
     return expr;
 
   expr = build_converted_constant_bool_expr (expr, complain);
-  expr = instantiate_non_dependent_expr_sfinae (expr, complain);
-  expr = cxx_constant_value (expr);
+  expr = instantiate_non_dependent_expr (expr, complain);
+  expr = cxx_constant_value (expr, complain);
   return expr;
 }
 

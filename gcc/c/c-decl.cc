@@ -156,6 +156,10 @@ static bool undef_nested_function;
 /* If non-zero, implicit "omp declare target" attribute is added into the
    attribute lists.  */
 int current_omp_declare_target_attribute;
+
+/* If non-zero, we are inside of
+   #pragma omp begin assumes ... #pragma omp end assumes region.  */
+int current_omp_begin_assumes;
 
 /* Each c_binding structure describes one binding of an identifier to
    a decl.  All the decls in a scope - irrespective of namespace - are
@@ -10674,14 +10678,6 @@ record_builtin_type (enum rid rid_index, const char *name, tree type)
   pushdecl (decl);
   if (debug_hooks->type_decl)
     debug_hooks->type_decl (decl, false);
-}
-
-/* Build the void_list_node (void_type_node having been created).  */
-tree
-build_void_list_node (void)
-{
-  tree t = build_tree_list (NULL_TREE, void_type_node);
-  return t;
 }
 
 /* Return a c_parm structure with the given SPECS, ATTRS and DECLARATOR.  */
