@@ -1,0 +1,51 @@
+/* function_shape declaration for RISC-V 'V' Extension for GNU compiler.
+   Copyright (C) 2022-2022 Free Software Foundation, Inc.
+   Contributed by Ju-Zhe Zhong (juzhe.zhong@rivai.ai), RiVAI Technologies Ltd.
+
+   This file is part of GCC.
+
+   GCC is free software; you can redistribute it and/or modify it
+   under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3, or (at your option)
+   any later version.
+
+   GCC is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
+
+#ifndef GCC_RISCV_VECTOR_BUILTINS_SHAPES_H
+#define GCC_RISCV_VECTOR_BUILTINS_SHAPES_H
+
+namespace riscv_vector {
+
+enum relation_index
+{
+  /* Relation between in vector_type_pair[0] and vector_type_pair[1].
+
+     Note: The size of vector_type_pair = n.
+
+     1. RELATION_ONE_ONE:
+	- Total combinations = n.
+	- Example: vadd_vv_i32m1.
+
+     3. RELATION_ONE_MANY:
+	- Total combinations = n * n.
+	- Example: vluxei16_v_i32m1.  */
+
+  RELATION_ONE_ONE,
+  RELATION_ONE_MANY,
+  NUM_RELATIONS
+};
+
+namespace shapes {
+extern const function_shape *const configure;
+}
+
+} // end namespace riscv_vector
+
+#endif

@@ -1,0 +1,45 @@
+/* Intrinsic define macros for RISC-V 'V' Extension for GNU compiler.
+   Copyright (C) 2022-2022 Free Software Foundation, Inc.
+   Contributed by Juzhe Zhong (juzhe.zhong@rivai.ai), RiVAI Technologies Ltd.
+
+This file is part of GCC.
+
+GCC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3, or (at your option)
+any later version.
+
+GCC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GCC; see the file COPYING3. If not see
+<http://www.gnu.org/licenses/>. */
+
+/* Use "DEF_RVV_FUNCTION" macro to define RVV intrinsic functions.
+
+     - NAME not only describes the base_name of the functions
+       but also point to the name of the function_base class.
+
+     - SHAPE point to the function_base class.
+
+     - OPS describes the operand types that are supported in the functions.
+
+     - TYPES describes the datatypes that are supported in the functions.
+
+     - PREDS describes the predication types that are supported in the
+       functions.
+
+*/
+#ifndef DEF_RVV_FUNCTION
+#define DEF_RVV_FUNCTION(NAME, SHAPE, OPS, TYPES, PREDS)
+#endif
+
+/* 6. Configuration-Setting Instructions.  */
+DEF_RVV_FUNCTION (vsetvl, configure, none_ops, all_signed, none_preds)
+// DEF_RVV_FUNCTION (vsetvlmax, nullptr, configure, none_ops, all_signed,
+// none_preds)
+
+#undef DEF_RVV_FUNCTION

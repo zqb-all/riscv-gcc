@@ -21,35 +21,343 @@
 #ifndef GCC_RISCV_VECTOR_BUILTINS_H
 #define GCC_RISCV_VECTOR_BUILTINS_H
 
+/* The full name of an RVV intrinsic function is the concatenation of:
+
+   - the base name ("vadd", etc.)
+   - the operand suffix ("_vv", "_vx", etc.)
+   - the type suffix ("_i32m1", "_i32mf2", etc.)
+   - the predication suffix ("_tamu", "_tumu", etc.)
+
+   Each piece of information is individually useful, so we retain this
+   classification throughout:
+
+   - function_base represents the base name.
+
+   - operand_type_index can be used as an index to get operand suffix.
+
+   - vector_type_pair can be used as an index to get type suffix.
+
+   - predication_type_index can be used as an index to get predication suffix.
+
+   In addition to its unique full name, a function may have a shorter
+   overloaded alias.  This alias removes pieces of the suffixes that
+   can be inferred from the arguments, such as by shortening the mode
+   suffix or dropping some of the type suffixes.  The base name and the
+   predication suffix stay the same.
+
+   - The function_instance class describes contains all properties of each
+     individual function. Such these information will be used by
+     function_builder, function_base, function_shape, gimple_folder,
+     function_expander, etc.
+
+   - The function_builder class provides several helper function to add an
+     intrinsic function.
+
+   - The function_shape class describes how that instruction has been presented
+     at the language level:
+
+      1. Determine the function name for C and C++ overload function which can
+	 be recognized by compiler at language level for each instruction
+	 according to members of function_instance (base name, operand suffix,
+	 type suffix, predication suffix, etc.).
+
+      2. Specify the arguments type and return type of each function to
+	 describe how that instruction has presented at language level.
+
+   - The function_base describes how the underlying instruction behaves.
+
+   The static list of functions uses function_group to describe a group
+   of related functions.  The function_builder class is responsible for
+   expanding this static description into a list of individual functions
+   and registering the associated built-in functions.  function_instance
+   describes one of these individual functions in terms of the properties
+   described above.
+
+   The classes involved in compiling a function call are:
+
+   - function_resolver, which resolves an overloaded function call to a
+     specific function_instance and its associated function decl.
+
+   - function_checker, which checks whether the values of the arguments
+     conform to the RVV ISA specification.
+
+   - gimple_folder, which tries to fold a function call at the gimple level
+
+   - function_expander, which expands a function call into rtl instructions
+
+   function_resolver and function_checker operate at the language level
+   and so are associated with the function_shape.  gimple_folder and
+   function_expander are concerned with the behavior of the function
+   and so are associated with the function_base.  */
+
 namespace riscv_vector {
 
-/* This is for segment instructions.  */
-const unsigned int MAX_TUPLE_SIZE = 8;
+/* Flags that describe what a function might do, in addition to reading
+   its arguments and returning a result.  */
+static const unsigned int CP_READ_FPCR = 1U << 0;
+static const unsigned int CP_RAISE_FP_EXCEPTIONS = 1U << 1;
+static const unsigned int CP_RAISE_LD_EXCEPTIONS = 1U << 2;
+static const unsigned int CP_READ_MEMORY = 1U << 3;
+static const unsigned int CP_WRITE_MEMORY = 1U << 4;
+static const unsigned int CP_READ_CSR = 1U << 5;
+static const unsigned int CP_WRITE_CSR = 1U << 6;
 
-/* Static information about each vector type.  */
-struct vector_type_info
+/* Enumerates the RVV operand types.  */
+enum operand_type_index
 {
-  /* The name of the type as declared by riscv_vector.h
-     which is recommend to use. For example: 'vint32m1_t'.  */
-  const char *user_name;
-
-  /* ABI name of vector type. The type is always available
-     under this name, even when riscv_vector.h isn't included.
-     For example:  '__rvv_int32m1_t'.  */
-  const char *abi_name;
-
-  /* The C++ mangling of ABI_NAME.  */
-  const char *mangled_name;
+#define DEF_RVV_OP_TYPE(NAME, SUFFIX) OP_TYPE_##NAME,
+#include "riscv-vector-builtins.def"
+  NUM_OP_TYPES
 };
 
 /* Enumerates the RVV types, together called
    "vector types" for brevity.  */
 enum vector_type_index
 {
-#define DEF_RVV_TYPE(USER_NAME, ABI_NAME, NCHARS, ARGS...)    \
-  VECTOR_TYPE_##USER_NAME,
+#define DEF_RVV_TYPE(NAME, ABI_NAME, NCHARS, ARGS...) VECTOR_TYPE_##NAME,
 #include "riscv-vector-builtins.def"
   NUM_VECTOR_TYPES
+};
+
+/* Enumerates the built-in Type in builtin_types.  */
+enum builtin_type_index
+{
+  /* Type represents 'vint32m1_t'.  */
+  BUILT_IN_VECTOR,
+  /* Type represents 'int32_t'.  */
+  BUILT_IN_SCALAR,
+  /* Type represents 'vint32m1_t *'.
+     used by segment non-tuple intrinsics.  */
+  BUILT_IN_VECTOR_PTR = 2,
+  /* This enum is not used to index mode_suffixes instead of builtin_types.
+     It's used return the correponding suffix for vsetvl instruction.
+     For example:
+       - mode_suffixes[VECTOR_TYPE_vint32m1_t][BUILT_IN_VECTOR] = 'i32m1'.
+       - mode_suffixes[VECTOR_TYPE_vint32m1_t][BUILT_IN_VSETVL] = 'e32m1'.  */
+  BUILT_IN_VSETVL = 2,
+  /* Type represents 'int32_t *'.  */
+  BUILT_IN_SCALAR_PTR = 3,
+  /* Type represents 'const int32_t *'.  */
+  BUILT_IN_SCALAR_CONST_PTR = 4,
+  /* Number of types.  */
+  NUM_BUILT_IN_TYPES
+};
+
+/* Enumerates the RVV governing predication types.  */
+enum predication_type_index
+{
+#define DEF_RVV_PRED_TYPE(NAME, SUFFIX) PRED_TYPE_##NAME,
+#include "riscv-vector-builtins.def"
+  NUM_PRED_TYPES
+};
+
+/* Combines two vector types.  */
+typedef enum vector_type_index vector_type_pair[2];
+
+class registered_function;
+class function_base;
+class function_shape;
+
+/* Static information about a set of functions.  */
+struct function_group_info
+{
+  /* The base name, as a string.  */
+  const char *base_name;
+
+  /* Describes the behavior associated with the function base name.  */
+  const function_base *const *base;
+
+  /* The shape of the functions, as described above the class definition.
+     It's possible to have entries with the same base name but different
+     shapes.  */
+  const function_shape *const *shape;
+
+  /* A list of the available operand typs, vector types, and of the available
+     predication types.  The function supports every combination of the two.
+
+     The list of ops is terminated by NUM_OP_TYPES,
+     The list of ops is terminated by two NUM_VECTOR_TYPES,
+
+     while the list of predication types is terminated by NUM_PRED_TYPES.
+     The list of these type suffix is lexicographically ordered based
+     on the index value.  */
+  const operand_type_index *ops;
+  const vector_type_pair *types;
+  const predication_type_index *preds;
+};
+
+class GTY ((user)) function_instance
+{
+public:
+  function_instance (const char *, const function_base *,
+		     const function_shape *, operand_type_index,
+		     const vector_type_pair &, predication_type_index);
+
+  bool operator== (const function_instance &) const;
+  bool operator!= (const function_instance &) const;
+  hashval_t hash () const;
+
+  unsigned int call_properties () const;
+  bool reads_global_state_p () const;
+  bool modifies_global_state_p () const;
+  bool could_trap_p () const;
+
+  bool type_float_p (unsigned int) const;
+
+  /* The properties of the function.  (The explicit "enum"s are required
+     for gengtype.)  */
+  const char *base_name;
+  const function_base *base;
+  const function_shape *shape;
+  enum operand_type_index op;
+  vector_type_pair types;
+  enum predication_type_index pred;
+};
+
+/* A class for building and registering function decls.  */
+class function_builder
+{
+public:
+  function_builder ();
+  ~function_builder ();
+
+  void add_unique_function (const function_instance &, const function_shape *,
+			    tree, vec<tree> &);
+  void register_function_group (const function_group_info &);
+  void append_name (const char *);
+  char *finish_name ();
+
+private:
+  tree get_attributes (const function_instance &);
+
+  registered_function &add_function (const function_instance &, const char *,
+				     tree, tree, bool);
+
+  /* True if we should create a separate decl for each instance of an
+     overloaded function, instead of using function_builder.  */
+  bool m_direct_overloads;
+
+  /* Used for building up function names.  */
+  obstack m_string_obstack;
+};
+
+/* A base class for handling calls to built-in functions.  */
+class function_call_info : public function_instance
+{
+public:
+  function_call_info (location_t, const function_instance &, tree);
+
+  bool function_returns_void_p ();
+
+  /* The location of the call.  */
+  location_t location;
+
+  /* The FUNCTION_DECL that is being called.  */
+  tree fndecl;
+};
+
+/* Return true if the function has no return value.  */
+inline bool
+function_call_info::function_returns_void_p ()
+{
+  return TREE_TYPE (TREE_TYPE (fndecl)) == void_type_node;
+}
+
+/* A class for folding a gimple function call.  */
+class gimple_folder : public function_call_info
+{
+public:
+  gimple_folder (const function_instance &, tree, gimple_stmt_iterator *,
+		 gcall *);
+
+  gimple *fold ();
+
+  /* Where to insert extra statements that feed the final replacement.  */
+  gimple_stmt_iterator *gsi;
+
+  /* The call we're folding.  */
+  gcall *call;
+
+  /* The result of the call, or null if none.  */
+  tree lhs;
+};
+
+/* A class for expanding a function call into RTL.  */
+class function_expander : public function_call_info
+{
+public:
+  function_expander (const function_instance &, tree, tree, rtx);
+  rtx expand ();
+
+  void add_input_operand (machine_mode, rtx);
+  void add_input_operand (unsigned argno);
+  rtx generate_insn (insn_code);
+
+  /* The function call expression.  */
+  tree exp;
+
+  /* For functions that return a value, this is the preferred location
+     of that value.  It could be null or could have a different mode
+     from the function return type.  */
+  rtx target;
+
+  /* The number of the operands.  */
+  int opno;
+
+private:
+  /* Used to build up the operands to an instruction.  */
+  struct expand_operand m_ops[MAX_RECOG_OPERANDS];
+};
+
+/* Provides information about a particular function base name, and handles
+   tasks related to the base name.  */
+class function_base
+{
+public:
+  /* Return a set of CP_* flags that describe what the function might do,
+     in addition to reading its arguments and returning a result.  */
+  virtual unsigned int call_properties (const function_instance &) const;
+
+  /* Try to fold the given gimple call.  Return the new gimple statement
+     on success, otherwise return null.  */
+  virtual gimple *fold (gimple_folder &) const { return NULL; }
+
+  /* Expand the given call into rtl.  Return the result of the function,
+     or an arbitrary value if the function doesn't return a result.  */
+  virtual rtx expand (function_expander &) const = 0;
+};
+
+/* Classifies functions into "shapes" base on:
+
+   - Base name of the intrinsic function.
+
+   - Operand types list.
+
+   - Argument type list.
+
+   - Predication type list.  */
+class function_shape
+{
+public:
+  /* Return true if the shape of a function is legitimate
+     so that the function can be registered.  */
+  virtual bool legitimate_shape_p (const vector_type_pair) const;
+
+  /* The return type of the function. Return void type by default.  */
+  virtual tree get_return_type (const vector_type_pair) const;
+
+  /* Allocate arguments of the function.  */
+  virtual void allocate_argument_types (const function_instance &,
+					vec<tree> &) const;
+
+  /* Shape the function name according to function_instance.  */
+  virtual char *get_name (function_builder &, const function_instance &,
+			  bool) const
+    = 0;
+
+  /* Define all functions associated with the given group.  */
+  virtual void build (function_builder &, const function_group_info &) const
+    = 0;
 };
 
 /* RAII class for enabling enough RVV features to define the built-in
@@ -70,6 +378,87 @@ public:
 private:
   bool m_old_have_regs_of_mode[MAX_MACHINE_MODE];
 };
+
+extern const char *const operand_suffixes[NUM_OP_TYPES];
+extern const char
+  *const mode_suffixes[NUM_VECTOR_TYPES + 1][BUILT_IN_VSETVL + 1];
+extern const char *const predication_suffixes[NUM_PRED_TYPES];
+extern tree builtin_types[NUM_VECTOR_TYPES + 1][NUM_BUILT_IN_TYPES];
+
+inline function_instance::function_instance (const char *base_name_in,
+					     const function_base *base_in,
+					     const function_shape *shape_in,
+					     operand_type_index op_in,
+					     const vector_type_pair &types_in,
+					     predication_type_index pred_in)
+  : base_name (base_name_in), base (base_in), shape (shape_in), op (op_in),
+    pred (pred_in)
+{
+  memcpy (types, types_in, sizeof (types));
+}
+
+inline bool
+function_instance::operator== (const function_instance &other) const
+{
+  return (base_name == other.base_name && base == other.base
+	  && shape == other.shape && op == other.op
+	  && types[0] == other.types[0] && types[1] == other.types[1]
+	  && pred == other.pred);
+}
+
+inline bool
+function_instance::operator!= (const function_instance &other) const
+{
+  return !operator== (other);
+}
+
+inline bool
+function_instance::type_float_p (unsigned int id) const
+{
+  return types[id] > VECTOR_TYPE_vuint64m8_t;
+}
+
+/* Expand the call and return its lhs.  */
+inline rtx
+function_expander::expand ()
+{
+  return base->expand (*this);
+}
+
+/* Create op and add it into M_OPS and increase OPNO.  */
+inline void
+function_expander::add_input_operand (machine_mode mode, rtx op)
+{
+  create_input_operand (&m_ops[opno++], op, mode);
+}
+
+/* Default implementation of function_base::call_properties, with conservatively
+   correct behavior for floating-point instructions.  */
+inline unsigned int
+function_base::call_properties (const function_instance &instance) const
+{
+  unsigned int flags = 0;
+  if (instance.type_float_p (0) || instance.type_float_p (1))
+    flags |= CP_READ_FPCR | CP_RAISE_FP_EXCEPTIONS;
+  return flags;
+}
+
+inline bool
+function_shape::legitimate_shape_p (const vector_type_pair) const
+{
+  return true;
+}
+
+inline tree
+function_shape::get_return_type (const vector_type_pair) const
+{
+  return void_type_node;
+}
+
+inline void
+function_shape::allocate_argument_types (const function_instance &,
+					 vec<tree> &) const
+{}
 
 } // end namespace riscv_vector
 

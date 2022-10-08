@@ -33,58 +33,135 @@
 #include "recog.h"
 #include "diagnostic.h"
 #include "expr.h"
+#include "basic-block.h"
 #include "function.h"
 #include "fold-const.h"
+#include "gimple.h"
+#include "gimple-iterator.h"
 #include "gimplify.h"
 #include "explow.h"
+#include "emit-rtl.h"
+#include "tree-vector-builder.h"
 #include "stor-layout.h"
+#include "regs.h"
 #include "alias.h"
+#include "gimple-fold.h"
 #include "langhooks.h"
 #include "stringpool.h"
 #include "attribs.h"
-#include "targhooks.h"
-#include "regs.h"
 #include "riscv-vector-builtins.h"
+#include "riscv-vector-builtins-shapes.h"
+#include "riscv-vector-builtins-bases.h"
 
 using namespace riscv_vector;
 
 namespace riscv_vector {
 
-/* Information about each RVV type.  */
+/* Static information about each vector type.  */
+struct vector_type_info
+{
+  /* The name of the type as declared by riscv_vector.h
+     which is recommend to use. For example: 'vint32m1_t'.  */
+  const char *name;
+
+  /* ABI name of vector type. The type is always available
+     under this name, even when riscv_vector.h isn't included.
+     For example:  '__rvv_int32m1_t'.  */
+  const char *abi_name;
+
+  /* The C++ mangling of ABI_NAME.  */
+  const char *mangled_name;
+};
+
+/* Describes a function decl.  */
+class GTY (()) registered_function
+{
+public:
+  function_instance GTY ((skip)) instance;
+
+  /* The decl itself.  */
+  tree GTY ((skip)) decl;
+};
+
+/* Hash traits for registered_function.  */
+struct registered_function_hasher : nofree_ptr_hash<registered_function>
+{
+  typedef function_instance compare_type;
+
+  static hashval_t hash (value_type);
+  static bool equal (value_type, const compare_type &);
+};
+
+/* Static information about each RVV type.  */
 static CONSTEXPR const vector_type_info vector_types[] = {
-#define DEF_RVV_TYPE(USER_NAME, NCHARS, ABI_NAME, ARGS...)    \
-  {#USER_NAME, #ABI_NAME, "u" #NCHARS #ABI_NAME},
+#define DEF_RVV_TYPE(NAME, NCHARS, ABI_NAME, ARGS...)                          \
+  {#NAME, #ABI_NAME, "u" #NCHARS #ABI_NAME},
 #include "riscv-vector-builtins.def"
 };
 
-/* The scalar type associated with each vector type.  */
-static GTY (()) tree scalar_types[NUM_VECTOR_TYPES];
-/* The machine mode associated with each vector type.  */
-static GTY (()) machine_mode vector_modes[NUM_VECTOR_TYPES];
+/* Static information about mode_suffix for each RVV type.  */
+const char *const operand_suffixes[NUM_OP_TYPES] = {
+#define DEF_RVV_OP_TYPE(NAME, SUFFIX) #SUFFIX,
+#include "riscv-vector-builtins.def"
+};
+
+/* Static information about mode_suffix for each RVV type.  */
+const char *const mode_suffixes[NUM_VECTOR_TYPES + 1][BUILT_IN_VSETVL + 1] = {
+#define DEF_RVV_TYPE(NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE,         \
+		     VECTOR_MODE_MIN_VLEN_32, VECTOR_SUFFIX, SCALAR_SUFFIX,    \
+		     VSETVL_SUFFIX)                                            \
+  {#VECTOR_SUFFIX, #SCALAR_SUFFIX, #VSETVL_SUFFIX},
+#include "riscv-vector-builtins.def"
+};
+
+/* Static information about mode_suffix for each RVV type.  */
+const char *const predication_suffixes[NUM_PRED_TYPES] = {
+#define DEF_RVV_PRED_TYPE(NAME, SUFFIX) #SUFFIX,
+#include "riscv-vector-builtins.def"
+};
+
+/* A list of none ops that will be registered for intrinsic functions.  */
+static const operand_type_index none_ops[] = {OP_TYPE_none, NUM_OP_TYPES};
+
+/* A list of all signed integer will be registered for intrinsic functions.  */
+static const vector_type_pair all_signed[] = {
+#define DEF_RVV_ALL_SIGNED_INTEGER(ID) {VECTOR_TYPE_##ID, VECTOR_TYPE_##ID},
+#include "riscv-vector-builtins.def"
+  {NUM_VECTOR_TYPES, NUM_VECTOR_TYPES}};
+
+/* A list of none preds that will be registered for intrinsic functions.  */
+static const predication_type_index none_preds[]
+  = {PRED_TYPE_none, NUM_PRED_TYPES};
+
+/* A list of all RVV intrinsic functions.  */
+static CONSTEXPR const function_group_info function_groups[] = {
+#define DEF_RVV_FUNCTION(NAME, SHAPE, OPS, TYPES, PREDS)                       \
+  {#NAME, &bases::NAME, &shapes::SHAPE, OPS, TYPES, PREDS},
+#include "riscv-vector-builtins.def"
+};
+
 /* The RVV types, with their built-in
    "__rvv..._t" name.  Allow an index of NUM_VECTOR_TYPES, which always
    yields a null tree.  */
-static GTY(()) tree abi_vector_types[NUM_VECTOR_TYPES + 1];
+static GTY (()) tree abi_vector_types[NUM_VECTOR_TYPES + 1];
 
 /* Same, but with the riscv_vector.h "v..._t" name.  */
-extern GTY(()) tree builtin_vector_types[MAX_TUPLE_SIZE][NUM_VECTOR_TYPES + 1];
-tree builtin_vector_types[MAX_TUPLE_SIZE][NUM_VECTOR_TYPES + 1];
+extern GTY (()) tree builtin_types[NUM_VECTOR_TYPES + 1][NUM_BUILT_IN_TYPES];
+tree builtin_types[NUM_VECTOR_TYPES + 1][NUM_BUILT_IN_TYPES];
 
-rvv_switcher::rvv_switcher ()
-{
-  /* Set have_regs_of_mode before targetm.init_builtins ().  */
-  memcpy (m_old_have_regs_of_mode, have_regs_of_mode,
-	  sizeof (have_regs_of_mode));
-  for (int i = 0; i < NUM_MACHINE_MODES; ++i)
-    if (riscv_v_ext_enabled_vector_mode_p ((machine_mode) i))
-      have_regs_of_mode[i] = true;
-}
+/* The list of all registered function decls, indexed by code.  */
+static GTY (()) vec<registered_function *, va_gc> *registered_functions;
 
-rvv_switcher::~rvv_switcher ()
+/* All registered function decls, hashed on the function_instance
+   that they implement.  This is used for looking up implementations of
+   overloaded functions.  */
+static hash_table<registered_function_hasher> *function_table;
+
+/* Add attribute NAME to ATTRS.  */
+static tree
+add_attribute (const char *name, tree attrs)
 {
-  /* Recover back have_regs_of_mode.  */
-  memcpy (have_regs_of_mode, m_old_have_regs_of_mode,
-	  sizeof (have_regs_of_mode));
+  return tree_cons (get_identifier (name), NULL_TREE, attrs);
 }
 
 /* Add type attributes to builtin type tree, currently only the mangled name. */
@@ -93,8 +170,8 @@ add_vector_type_attribute (tree type, const char *mangled_name)
 {
   tree mangled_name_tree = get_identifier (mangled_name);
   tree value = tree_cons (NULL_TREE, mangled_name_tree, NULL_TREE);
-  TYPE_ATTRIBUTES (type) = tree_cons (get_identifier ("RVV type"), value,
-				      TYPE_ATTRIBUTES (type));
+  TYPE_ATTRIBUTES (type)
+    = tree_cons (get_identifier ("RVV type"), value, TYPE_ATTRIBUTES (type));
 }
 
 /* Force TYPE to be a sizeless type.  */
@@ -124,17 +201,37 @@ lookup_vector_type_attribute (const_tree type)
   return lookup_attribute ("RVV type", TYPE_ATTRIBUTES (type));
 }
 
-/* If TYPE is a built-in type defined by the RVV ABI, return the mangled name,
-   otherwise return NULL.  */
-const char *
-mangle_builtin_type (const_tree type)
+/* Return a representation of "const T *".  */
+static tree
+build_const_pointer (tree t)
 {
-  if (TYPE_NAME (type) && TREE_CODE (TYPE_NAME (type)) == TYPE_DECL)
-    type = TREE_TYPE (TYPE_NAME (type));
-  if (tree attr = lookup_vector_type_attribute (type))
-    if (tree id = TREE_VALUE (chain_index (0, TREE_VALUE (attr))))
-      return IDENTIFIER_POINTER (id);
-  return NULL;
+  return build_pointer_type (build_qualified_type (t, TYPE_QUAL_CONST));
+}
+
+/* Helper function for register a single built-in RVV ABI type.  */
+static void
+register_builtin_type (vector_type_index type, tree eltype, machine_mode mode)
+{
+  builtin_types[type][BUILT_IN_SCALAR] = eltype;
+  builtin_types[type][BUILT_IN_SCALAR_PTR] = build_pointer_type (eltype);
+  builtin_types[type][BUILT_IN_SCALAR_CONST_PTR] = build_const_pointer (eltype);
+  if (!riscv_v_ext_enabled_vector_mode_p (mode))
+    return;
+
+  tree vectype = build_vector_type_for_mode (eltype, mode);
+  gcc_assert (VECTOR_MODE_P (TYPE_MODE (vectype)) && TYPE_MODE (vectype) == mode
+	      && TYPE_MODE_RAW (vectype) == mode && TYPE_ALIGN (vectype) <= 128
+	      && known_eq (tree_to_poly_uint64 (TYPE_SIZE (vectype)),
+			   GET_MODE_BITSIZE (mode)));
+  vectype = build_distinct_type_copy (vectype);
+  gcc_assert (vectype == TYPE_MAIN_VARIANT (vectype));
+  SET_TYPE_STRUCTURAL_EQUALITY (vectype);
+  TYPE_ARTIFICIAL (vectype) = 1;
+  TYPE_INDIVISIBLE_P (vectype) = 1;
+  add_vector_type_attribute (vectype, vector_types[type].mangled_name);
+  make_type_sizeless (vectype);
+  abi_vector_types[type] = vectype;
+  lang_hooks.types.register_builtin_type (vectype, vector_types[type].abi_name);
 }
 
 /* Register the built-in RVV ABI types, such as __rvv_int32m1_t.  */
@@ -151,42 +248,12 @@ register_builtin_types ()
     = TARGET_64BIT ? unsigned_intSI_type_node : long_unsigned_type_node;
 
   machine_mode mode;
-#define DEF_RVV_TYPE(USER_NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE,    \
-		     VECTOR_MODE_MIN_VLEN_32)                                  \
+#define DEF_RVV_TYPE(NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE,         \
+		     VECTOR_MODE_MIN_VLEN_32, ARGS...)                         \
   mode = TARGET_MIN_VLEN > 32 ? VECTOR_MODE##mode                              \
 			      : VECTOR_MODE_MIN_VLEN_32##mode;                 \
-  scalar_types[VECTOR_TYPE_##USER_NAME]                                        \
-    = riscv_v_ext_enabled_vector_mode_p (mode) ? SCALAR_TYPE##_type_node       \
-					       : NULL_TREE;                    \
-  vector_modes[VECTOR_TYPE_##USER_NAME]                                        \
-    = riscv_v_ext_enabled_vector_mode_p (mode) ? mode : VOIDmode;
+  register_builtin_type (VECTOR_TYPE_##NAME, SCALAR_TYPE##_type_node, mode);
 #include "riscv-vector-builtins.def"
-
-  for (unsigned int i = 0; i < NUM_VECTOR_TYPES; ++i)
-    {
-      tree eltype = scalar_types[i];
-      mode = vector_modes[i];
-      /* We disabled the datatypes according '-march'.  */
-      if (!eltype)
-	continue;
-
-      tree vectype = build_vector_type_for_mode (eltype, mode);
-      gcc_assert (
-	VECTOR_MODE_P (TYPE_MODE (vectype)) && TYPE_MODE (vectype) == mode
-	&& TYPE_MODE_RAW (vectype) == mode && TYPE_ALIGN (vectype) <= 128
-	&& known_eq (tree_to_poly_uint64 (TYPE_SIZE (vectype)),
-		     GET_MODE_BITSIZE (mode)));
-      vectype = build_distinct_type_copy (vectype);
-      gcc_assert (vectype == TYPE_MAIN_VARIANT (vectype));
-      SET_TYPE_STRUCTURAL_EQUALITY (vectype);
-      TYPE_ARTIFICIAL (vectype) = 1;
-      TYPE_INDIVISIBLE_P (vectype) = 1;
-      add_vector_type_attribute (vectype, vector_types[i].mangled_name);
-      make_type_sizeless (vectype);
-      abi_vector_types[i] = vectype;
-      lang_hooks.types.register_builtin_type (vectype,
-					      vector_types[i].abi_name);
-    }
 }
 
 /* Register vector type TYPE under its risv_vector.h name.  */
@@ -194,11 +261,12 @@ static void
 register_vector_type (vector_type_index type)
 {
   tree vectype = abi_vector_types[type];
+
   /* When vectype is NULL, the corresponding builtin type
      is disabled according to '-march'.  */
   if (!vectype)
     return;
-  tree id = get_identifier (vector_types[type].user_name);
+  tree id = get_identifier (vector_types[type].name);
   tree decl = build_decl (input_location, TYPE_DECL, id, vectype);
   decl = lang_hooks.decls.pushdecl (decl);
 
@@ -212,7 +280,324 @@ register_vector_type (vector_type_index type)
       && TYPE_MAIN_VARIANT (TREE_TYPE (decl)) == vectype)
     vectype = TREE_TYPE (decl);
 
-  builtin_vector_types[0][type] = vectype;
+  builtin_types[type][BUILT_IN_VECTOR] = vectype;
+  builtin_types[type][BUILT_IN_VECTOR_PTR] = build_pointer_type (vectype);
+}
+
+/* Return a hash code for a function_instance.  */
+hashval_t
+function_instance::hash () const
+{
+  inchash::hash h;
+  /* BASE uniquely determines BASE_NAME, so we don't need to hash both.  */
+  h.add_ptr (base);
+  h.add_int (op);
+  h.add_ptr (types);
+  h.add_int (pred);
+  return h.end ();
+}
+
+/* Return a set of CP_* flags that describe what the function could do,
+   taking the command-line flags into account.  */
+unsigned int
+function_instance::call_properties () const
+{
+  unsigned int flags = base->call_properties (*this);
+
+  /* -fno-trapping-math means that we can assume any FP exceptions
+     are not user-visible.  */
+  if (!flag_trapping_math)
+    flags &= ~CP_RAISE_FP_EXCEPTIONS;
+
+  return flags;
+}
+
+/* Return true if calls to the function could read some form of
+   global state.  */
+bool
+function_instance::reads_global_state_p () const
+{
+  unsigned int flags = call_properties ();
+
+  /* Preserve any dependence on rounding mode, flush to zero mode, etc.
+     There is currently no way of turning this off; in particular,
+     -fno-rounding-math (which is the default) means that we should make
+     the usual assumptions about rounding mode, which for intrinsics means
+     acting as the instructions do.  */
+  if (flags & CP_READ_FPCR)
+    return true;
+
+  /* Handle direct reads of global state.  */
+  return flags & (CP_READ_MEMORY | CP_READ_CSR);
+}
+
+/* Return true if calls to the function could modify some form of
+   global state.  */
+bool
+function_instance::modifies_global_state_p () const
+{
+  unsigned int flags = call_properties ();
+
+  /* Preserve any exception state written back to the FPCR,
+     unless -fno-trapping-math says this is unnecessary.  */
+  if (flags & (CP_RAISE_FP_EXCEPTIONS | CP_RAISE_LD_EXCEPTIONS))
+    return true;
+
+  /* Handle direct modifications of global state.  */
+  return flags & (CP_WRITE_MEMORY | CP_WRITE_CSR);
+}
+
+/* Return true if calls to the function could raise a signal.  */
+bool
+function_instance::could_trap_p () const
+{
+  unsigned int flags = call_properties ();
+
+  /* Handle functions that could raise SIGFPE.  */
+  if (flags & (CP_RAISE_FP_EXCEPTIONS | CP_RAISE_LD_EXCEPTIONS))
+    return true;
+
+  /* Handle functions that could raise SIGBUS or SIGSEGV.  */
+  if (flags & (CP_READ_MEMORY | CP_WRITE_MEMORY))
+    return true;
+
+  return false;
+}
+
+function_builder::function_builder ()
+{
+  m_direct_overloads = lang_GNU_CXX ();
+  gcc_obstack_init (&m_string_obstack);
+}
+
+function_builder::~function_builder ()
+{
+  obstack_free (&m_string_obstack, NULL);
+}
+
+/* Register all the functions in GROUP.  */
+void
+function_builder::register_function_group (const function_group_info &group)
+{
+  (*group.shape)->build (*this, group);
+}
+
+/* Add NAME to the end of the function name being built.  */
+void
+function_builder::append_name (const char *name)
+{
+  obstack_grow (&m_string_obstack, name, strlen (name));
+}
+
+/* Zero-terminate and complete the function name being built.  */
+char *
+function_builder::finish_name ()
+{
+  obstack_1grow (&m_string_obstack, 0);
+  return (char *) obstack_finish (&m_string_obstack);
+}
+
+/* Return the appropriate function attributes for INSTANCE.  */
+tree
+function_builder::get_attributes (const function_instance &instance)
+{
+  tree attrs = NULL_TREE;
+
+  if (!instance.modifies_global_state_p ())
+    {
+      if (instance.reads_global_state_p ())
+	attrs = add_attribute ("pure", attrs);
+      else
+	attrs = add_attribute ("const", attrs);
+    }
+
+  if (!flag_non_call_exceptions || !instance.could_trap_p ())
+    attrs = add_attribute ("nothrow", attrs);
+
+  return add_attribute ("leaf", attrs);
+}
+
+/* Add a function called NAME with type FNTYPE and attributes ATTRS.
+   INSTANCE describes what the function does.  */
+registered_function &
+function_builder::add_function (const function_instance &instance,
+				const char *name, tree fntype, tree attrs,
+				bool placeholder_p)
+{
+  unsigned int code = vec_safe_length (registered_functions);
+  code = (code << RISCV_BUILTIN_SHIFT) + RISCV_BUILTIN_VECTOR;
+
+  /* We need to be able to generate placeholders to enusre that we have a
+     consistent numbering scheme for function codes between the C and C++
+     frontends, so that everything ties up in LTO.
+
+     Currently, tree-streamer-in.c:unpack_ts_function_decl_value_fields
+     validates that tree nodes returned by TARGET_BUILTIN_DECL are non-NULL and
+     some node other than error_mark_node. This is a holdover from when builtin
+     decls were streamed by code rather than by value.
+
+     Ultimately, we should be able to remove this validation of BUILT_IN_MD
+     nodes and remove the target hook. For now, however, we need to appease the
+     validation and return a non-NULL, non-error_mark_node node, so we
+     arbitrarily choose integer_zero_node.  */
+  tree decl = placeholder_p
+		? integer_zero_node
+		: simulate_builtin_function_decl (input_location, name, fntype,
+						  code, NULL, attrs);
+
+  registered_function &rfn = *ggc_alloc<registered_function> ();
+  rfn.instance = instance;
+  rfn.decl = decl;
+  vec_safe_push (registered_functions, &rfn);
+
+  return rfn;
+}
+
+/* Add a built-in function for INSTANCE, with the argument types given
+   by ARGUMENT_TYPES and the return type given by RETURN_TYPE. NAME is
+   the "full" name for C function. OVERLOAD_NAME is the "short" name for
+   C++ overloaded function. OVERLOAD_NAME can be nullptr because some
+   instance doesn't have C++ overloaded function.  */
+void
+function_builder::add_unique_function (const function_instance &instance,
+				       const function_shape *shape,
+				       tree return_type,
+				       vec<tree> &argument_types)
+{
+  /* Add the function under its full (unique) name.  */
+  char *name = shape->get_name (*this, instance, false);
+  tree fntype
+    = build_function_type_array (return_type, argument_types.length (),
+				 argument_types.address ());
+  tree attrs = get_attributes (instance);
+  registered_function &rfn
+    = add_function (instance, name, fntype, attrs, false);
+
+  /* Enter the function into the hash table.  */
+  hashval_t hash = instance.hash ();
+  registered_function **rfn_slot
+    = function_table->find_slot_with_hash (instance, hash, INSERT);
+  gcc_assert (!*rfn_slot);
+  *rfn_slot = &rfn;
+
+  /* Also add the function under its overloaded alias, if we want
+     a separate decl for each instance of an overloaded function.  */
+  char *overload_name = shape->get_name (*this, instance, true);
+  if (overload_name)
+    {
+      /* Attribute lists shouldn't be shared.  */
+      tree attrs = get_attributes (instance);
+      bool placeholder_p = !m_direct_overloads;
+      add_function (instance, overload_name, fntype, attrs, placeholder_p);
+    }
+  obstack_free (&m_string_obstack, name);
+}
+
+function_call_info::function_call_info (location_t location_in,
+					const function_instance &instance_in,
+					tree fndecl_in)
+  : function_instance (instance_in), location (location_in), fndecl (fndecl_in)
+{}
+
+gimple_folder::gimple_folder (const function_instance &instance, tree fndecl,
+			      gimple_stmt_iterator *gsi_in, gcall *call_in)
+  : function_call_info (gimple_location (call_in), instance, fndecl),
+    gsi (gsi_in), call (call_in), lhs (gimple_call_lhs (call_in))
+{}
+
+/* Try to fold the call.  Return the new statement on success and null
+   on failure.  */
+gimple *
+gimple_folder::fold ()
+{
+  /* Don't fold anything when TARGET_VECTOR is disabled; emit an error during
+     expansion instead.  */
+  if (!TARGET_VECTOR)
+    return NULL;
+
+  /* Punt if the function has a return type and no result location is
+     provided.  The attributes should allow target-independent code to
+     remove the calls if appropriate.  */
+  if (!lhs && TREE_TYPE (gimple_call_fntype (call)) != void_type_node)
+    return NULL;
+
+  return base->fold (*this);
+}
+
+function_expander::function_expander (const function_instance &instance,
+				      tree fndecl_in, tree exp_in,
+				      rtx target_in)
+  : function_call_info (EXPR_LOCATION (exp_in), instance, fndecl_in),
+    exp (exp_in), target (target_in), opno (0)
+{
+  if (!function_returns_void_p ())
+    create_output_operand (&m_ops[opno++], target, TYPE_MODE (TREE_TYPE (exp)));
+}
+
+/* Take argument ARGNO from EXP's argument list and convert it into
+   an expand operand.  Store the operand in *M_OPS.  */
+void
+function_expander::add_input_operand (unsigned argno)
+{
+  tree arg = CALL_EXPR_ARG (exp, argno);
+  rtx x = expand_normal (arg);
+  add_input_operand (TYPE_MODE (TREE_TYPE (arg)), x);
+}
+
+/* Generate instruction ICODE, given that its operands have already
+   been added to M_OPS.  Return the value of the first operand.  */
+rtx
+function_expander::generate_insn (insn_code icode)
+{
+  gcc_assert (opno == insn_data[icode].n_generator_args);
+  if (!maybe_expand_insn (icode, opno, m_ops))
+    {
+      error ("invalid argument to built-in function");
+      return NULL_RTX;
+    }
+  return function_returns_void_p () ? const0_rtx : m_ops[0].value;
+}
+
+inline hashval_t
+registered_function_hasher::hash (value_type value)
+{
+  return value->instance.hash ();
+}
+
+inline bool
+registered_function_hasher::equal (value_type value, const compare_type &key)
+{
+  return value->instance == key;
+}
+
+rvv_switcher::rvv_switcher ()
+{
+  /* Set have_regs_of_mode before targetm.init_builtins ().  */
+  memcpy (m_old_have_regs_of_mode, have_regs_of_mode,
+	  sizeof (have_regs_of_mode));
+  for (int i = 0; i < NUM_MACHINE_MODES; ++i)
+    if (riscv_v_ext_enabled_vector_mode_p ((machine_mode) i))
+      have_regs_of_mode[i] = true;
+}
+
+rvv_switcher::~rvv_switcher ()
+{
+  /* Recover back have_regs_of_mode.  */
+  memcpy (have_regs_of_mode, m_old_have_regs_of_mode,
+	  sizeof (have_regs_of_mode));
+}
+
+/* If TYPE is a built-in type defined by the RVV ABI, return the mangled name,
+   otherwise return NULL.  */
+const char *
+mangle_builtin_type (const_tree type)
+{
+  if (TYPE_NAME (type) && TREE_CODE (TYPE_NAME (type)) == TYPE_DECL)
+    type = TREE_TYPE (TYPE_NAME (type));
+  if (tree attr = lookup_vector_type_attribute (type))
+    if (tree id = TREE_VALUE (chain_index (0, TREE_VALUE (attr))))
+      return IDENTIFIER_POINTER (id);
+  return NULL;
 }
 
 /* Initialize all compiler built-ins related to RVV that should be
@@ -314,11 +699,66 @@ verify_type_context (location_t loc, type_context_kind context, const_tree type,
 void
 handle_pragma_vector ()
 {
+  if (function_table)
+    {
+      error ("duplicate definition of %qs", "riscv_vector.h");
+      return;
+    }
   rvv_switcher rvv;
 
   /* Define the vector and tuple types.  */
   for (unsigned int type_i = 0; type_i < NUM_VECTOR_TYPES; ++type_i)
     register_vector_type ((enum vector_type_index) type_i);
+
+  /* Define the functions.  */
+  function_table = new hash_table<registered_function_hasher> (1023);
+  function_builder builder;
+  for (unsigned int i = 0; i < ARRAY_SIZE (function_groups); ++i)
+    builder.register_function_group (function_groups[i]);
+}
+
+/* Return the function decl with SVE function subcode CODE, or error_mark_node
+   if no such function exists.  */
+tree
+builtin_decl (unsigned int code, bool)
+{
+  if (code >= vec_safe_length (registered_functions))
+    return error_mark_node;
+  return (*registered_functions)[code]->decl;
+}
+
+/* Attempt to fold STMT, given that it's a call to the RVV function
+   with subcode CODE.  Return the new statement on success and null
+   on failure.  Insert any other new statements at GSI.  */
+gimple *
+gimple_fold_builtin (unsigned int code, gimple_stmt_iterator *gsi, gcall *stmt)
+{
+  registered_function &rfn = *(*registered_functions)[code];
+  return gimple_folder (rfn.instance, rfn.decl, gsi, stmt).fold ();
+}
+
+/* Expand a call to the SVE function with subcode CODE.  EXP is the call
+   expression and TARGET is the preferred location for the result.
+   Return the value of the lhs.  */
+rtx
+expand_builtin (unsigned int code, tree exp, rtx target)
+{
+  registered_function &rfn = *(*registered_functions)[code];
+  return function_expander (rfn.instance, rfn.decl, exp, target).expand ();
 }
 
 } // end namespace riscv_vector
+
+inline void
+gt_ggc_mx (function_instance *)
+{}
+
+inline void
+gt_pch_nx (function_instance *)
+{}
+
+inline void
+gt_pch_nx (function_instance *, gt_pointer_operator, void *)
+{}
+
+#include "gt-riscv-vector-builtins.h"

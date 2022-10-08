@@ -4135,6 +4135,30 @@ riscv_print_operand (FILE *file, rtx op, int letter)
 
   switch (letter)
     {
+    case 'e':
+    {
+      if (code == CONST_INT)
+        {
+          machine_mode mode = (machine_mode) INTVAL (op);
+          unsigned int bitsize = GET_MODE_BITSIZE (GET_MODE_INNER (mode));
+          asm_fprintf (file, "%d", bitsize);
+        }
+      else
+        output_operand_lossage ("invalid vector constant");
+    }
+    break;
+    case 'l':
+    {
+      if (code == CONST_INT)
+        {
+          machine_mode mode = (machine_mode) INTVAL (op);
+          unsigned int bitsize = GET_MODE_BITSIZE (GET_MODE_INNER (mode));
+          asm_fprintf (file, "%wd", bitsize);
+        }
+      else
+        output_operand_lossage ("invalid vector constant");
+    }
+    break;
     case 'h':
       if (code == HIGH)
 	op = XEXP (op, 0);
@@ -6595,6 +6619,9 @@ riscv_vector_alignment (const_tree type)
 
 #undef TARGET_VECTOR_ALIGNMENT
 #define TARGET_VECTOR_ALIGNMENT riscv_vector_alignment
+
+#undef TARGET_GIMPLE_FOLD_BUILTIN
+#define TARGET_GIMPLE_FOLD_BUILTIN riscv_gimple_fold_builtin
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
