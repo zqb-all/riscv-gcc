@@ -1,8 +1,8 @@
 riscv-builtins.o: $(srcdir)/config/riscv/riscv-builtins.cc $(CONFIG_H) \
   $(SYSTEM_H) coretypes.h $(TM_H) $(RTL_H) $(TREE_H) $(RECOG_H) langhooks.h \
-  $(DIAGNOSTIC_CORE_H) $(OPTABS_H) $(srcdir)/config/riscv/riscv-ftypes.def \
-  $(srcdir)/config/riscv/riscv-modes.def $(BACKEND_H) $(GIMPLE_H) \
-  gimple-iterator.h
+  $(DIAGNOSTIC_CORE_H) $(OPTABS_H) $(GIMPLE_H) gimple-iterator.h \
+  $(srcdir)/config/riscv/riscv-ftypes.def \
+  $(srcdir)/config/riscv/riscv-modes.def
 	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
 		$(srcdir)/config/riscv/riscv-builtins.cc
 
@@ -37,7 +37,7 @@ riscv-vector-builtins-bases.o: \
   $(TM_P_H) memmodel.h insn-codes.h $(OPTABS_H) $(RECOG_H) \
   $(EXPR_H) $(BASIC_BLOCK_H) $(FUNCTION_H) fold-const.h $(GIMPLE_H) \
   gimple-iterator.h gimplify.h explow.h $(EMIT_RTL_H) tree-vector-builder.h \
-  rtx-vector-builder.h vec-perm-indices.h \
+  rtx-vector-builder.h \
   $(srcdir)/config/riscv/riscv-vector-builtins.h \
   $(srcdir)/config/riscv/riscv-vector-builtins-shapes.h \
   $(srcdir)/config/riscv/riscv-vector-builtins-bases.h

@@ -40,7 +40,6 @@
 #include "emit-rtl.h"
 #include "tree-vector-builder.h"
 #include "rtx-vector-builder.h"
-#include "vec-perm-indices.h"
 #include "riscv-vector-builtins.h"
 #include "riscv-vector-builtins-shapes.h"
 #include "riscv-vector-builtins-bases.h"
@@ -68,13 +67,35 @@ public:
   rtx expand (function_expander &e) const override
   {
     e.add_input_operand (0);
-    tree type = builtin_types[e.types[0]][BUILT_IN_VECTOR];
+    tree type = builtin_types[e.pair[0].type][BUILT_IN_VECTOR];
     machine_mode mode = TYPE_MODE (type);
-    e.add_input_operand (Pmode, gen_int_mode ((unsigned int) mode, Pmode));
-    e.add_input_operand (Pmode, gen_int_mode (0x10, Pmode));
+    e.add_input_operand (Pmode, gen_int_mode (((unsigned int) mode << 2) | 0x2,
+					      Pmode));
     return e.generate_insn (code_for_vsetvl (Pmode));
   }
 };
+
+/* Implements vsetvlmax<mode>.  */
+class vsetvlmax : public function_base
+{
+public:
+  unsigned int call_properties (const function_instance &) const
+  {
+    return CP_READ_CSR | CP_WRITE_CSR;
+  }
+
+  rtx expand (function_expander &e) const override
+  {
+    e.add_input_operand (Pmode, gen_rtx_REG (Pmode, 0));
+    tree type = builtin_types[e.pair[0].type][BUILT_IN_VECTOR];
+    machine_mode mode = TYPE_MODE (type);
+    e.add_input_operand (Pmode, gen_int_mode (((unsigned int) mode << 2) | 0x2,
+					      Pmode));
+    return e.generate_insn (code_for_vsetvl (Pmode));
+  }
+};
+
 BASE (vsetvl)
+BASE (vsetvlmax)
 
 } // end namespace riscv_vector

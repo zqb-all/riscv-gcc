@@ -25,9 +25,10 @@ namespace riscv_vector {
 
 enum relation_index
 {
-  /* Relation between in vector_type_pair[0] and vector_type_pair[1].
+  /* Relation between in vector_type_field_pair[n][0] and
+     vector_type_field_pair[n][1].
 
-     Note: The size of vector_type_pair = n.
+     Note: The size of vector_type_field_pair = n.
 
      1. RELATION_ONE_ONE:
 	- Total combinations = n.
@@ -44,6 +45,7 @@ enum relation_index
 
 namespace shapes {
 extern const function_shape *const configure;
+extern const function_shape *const vsetvl;
 }
 
 } // end namespace riscv_vector

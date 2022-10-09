@@ -35,7 +35,7 @@
 
    - operand_type_index can be used as an index to get operand suffix.
 
-   - vector_type_pair can be used as an index to get type suffix.
+   - vector_type_field can be used as an index to get type suffix.
 
    - predication_type_index can be used as an index to get predication suffix.
 
@@ -102,6 +102,12 @@ static const unsigned int CP_WRITE_MEMORY = 1U << 4;
 static const unsigned int CP_READ_CSR = 1U << 5;
 static const unsigned int CP_WRITE_CSR = 1U << 6;
 
+/* Bit values used to identify required extensions for RVV intrinsics.  */
+#define VECTOR_REQUIRE_RV64BIT (1 << 0)	   /* Require RV64.  */
+#define VECTOR_REQUIRE_ZVE64 (1 << 1)	   /* Require TARGET_MIN_VLEN > 32.  */
+#define VECTOR_REQUIRE_HARD_FLOAT (1 << 2) /* Require hard float.  */
+#define VECTOR_REQUIRE_DOUBLE_FLOAT (1 << 3) /* Require double float.  */
+
 /* Enumerates the RVV operand types.  */
 enum operand_type_index
 {
@@ -129,11 +135,11 @@ enum builtin_type_index
   /* Type represents 'vint32m1_t *'.
      used by segment non-tuple intrinsics.  */
   BUILT_IN_VECTOR_PTR = 2,
-  /* This enum is not used to index mode_suffixes instead of builtin_types.
+  /* This enum is not used to index type_suffixes instead of builtin_types.
      It's used return the correponding suffix for vsetvl instruction.
      For example:
-       - mode_suffixes[VECTOR_TYPE_vint32m1_t][BUILT_IN_VECTOR] = 'i32m1'.
-       - mode_suffixes[VECTOR_TYPE_vint32m1_t][BUILT_IN_VSETVL] = 'e32m1'.  */
+       - type_suffixes[VECTOR_TYPE_vint32m1_t][BUILT_IN_VECTOR] = 'i32m1'.
+       - type_suffixes[VECTOR_TYPE_vint32m1_t][BUILT_IN_VSETVL] = 'e32m1'.  */
   BUILT_IN_VSETVL = 2,
   /* Type represents 'int32_t *'.  */
   BUILT_IN_SCALAR_PTR = 3,
@@ -151,8 +157,16 @@ enum predication_type_index
   NUM_PRED_TYPES
 };
 
+/* Static information about a vector type index.
+   Including equired_extensions can help to validate each RVV instruction.  */
+struct vector_type_field
+{
+  enum vector_type_index type;
+  uint64_t required_extensions;
+};
+
 /* Combines two vector types.  */
-typedef enum vector_type_index vector_type_pair[2];
+typedef struct vector_type_field vector_type_field_pair[2];
 
 class registered_function;
 class function_base;
@@ -182,7 +196,7 @@ struct function_group_info
      The list of these type suffix is lexicographically ordered based
      on the index value.  */
   const operand_type_index *ops;
-  const vector_type_pair *types;
+  const vector_type_field_pair *pairs;
   const predication_type_index *preds;
 };
 
@@ -191,7 +205,7 @@ class GTY ((user)) function_instance
 public:
   function_instance (const char *, const function_base *,
 		     const function_shape *, operand_type_index,
-		     const vector_type_pair &, predication_type_index);
+		     const vector_type_field_pair &, predication_type_index);
 
   bool operator== (const function_instance &) const;
   bool operator!= (const function_instance &) const;
@@ -210,7 +224,7 @@ public:
   const function_base *base;
   const function_shape *shape;
   enum operand_type_index op;
-  vector_type_pair types;
+  vector_type_field_pair pair;
   enum predication_type_index pred;
 };
 
@@ -339,12 +353,8 @@ public:
 class function_shape
 {
 public:
-  /* Return true if the shape of a function is legitimate
-     so that the function can be registered.  */
-  virtual bool legitimate_shape_p (const vector_type_pair) const;
-
   /* The return type of the function. Return void type by default.  */
-  virtual tree get_return_type (const vector_type_pair) const;
+  virtual tree get_return_type (const vector_type_field_pair) const;
 
   /* Allocate arguments of the function.  */
   virtual void allocate_argument_types (const function_instance &,
@@ -381,29 +391,28 @@ private:
 
 extern const char *const operand_suffixes[NUM_OP_TYPES];
 extern const char
-  *const mode_suffixes[NUM_VECTOR_TYPES + 1][BUILT_IN_VSETVL + 1];
+  *const type_suffixes[NUM_VECTOR_TYPES + 1][BUILT_IN_VSETVL + 1];
 extern const char *const predication_suffixes[NUM_PRED_TYPES];
 extern tree builtin_types[NUM_VECTOR_TYPES + 1][NUM_BUILT_IN_TYPES];
 
-inline function_instance::function_instance (const char *base_name_in,
-					     const function_base *base_in,
-					     const function_shape *shape_in,
-					     operand_type_index op_in,
-					     const vector_type_pair &types_in,
-					     predication_type_index pred_in)
+inline function_instance::function_instance (
+  const char *base_name_in, const function_base *base_in,
+  const function_shape *shape_in, operand_type_index op_in,
+  const vector_type_field_pair &pair_in, predication_type_index pred_in)
   : base_name (base_name_in), base (base_in), shape (shape_in), op (op_in),
     pred (pred_in)
 {
-  memcpy (types, types_in, sizeof (types));
+  memcpy (pair, pair_in, sizeof (pair));
 }
 
 inline bool
 function_instance::operator== (const function_instance &other) const
 {
-  return (base_name == other.base_name && base == other.base
-	  && shape == other.shape && op == other.op
-	  && types[0] == other.types[0] && types[1] == other.types[1]
-	  && pred == other.pred);
+  return (base == other.base && shape == other.shape && op == other.op
+	  && pred == other.pred && pair[0].type == other.pair[0].type
+	  && pair[0].required_extensions == other.pair[0].required_extensions
+	  && pair[1].type == other.pair[1].type
+	  && pair[1].required_extensions == other.pair[1].required_extensions);
 }
 
 inline bool
@@ -415,7 +424,7 @@ function_instance::operator!= (const function_instance &other) const
 inline bool
 function_instance::type_float_p (unsigned int id) const
 {
-  return types[id] > VECTOR_TYPE_vuint64m8_t;
+  return pair[id].type > VECTOR_TYPE_vuint64m8_t;
 }
 
 /* Expand the call and return its lhs.  */
@@ -443,14 +452,8 @@ function_base::call_properties (const function_instance &instance) const
   return flags;
 }
 
-inline bool
-function_shape::legitimate_shape_p (const vector_type_pair) const
-{
-  return true;
-}
-
 inline tree
-function_shape::get_return_type (const vector_type_pair) const
+function_shape::get_return_type (const vector_type_field_pair) const
 {
   return void_type_node;
 }

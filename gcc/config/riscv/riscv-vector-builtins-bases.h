@@ -25,6 +25,7 @@ namespace riscv_vector {
 
 namespace bases {
 extern const function_base *const vsetvl;
+extern const function_base *const vsetvlmax;
 }
 
 } // end namespace riscv_vector

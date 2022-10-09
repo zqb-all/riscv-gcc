@@ -99,14 +99,14 @@ static CONSTEXPR const vector_type_info vector_types[] = {
 #include "riscv-vector-builtins.def"
 };
 
-/* Static information about mode_suffix for each RVV type.  */
+/* Static information about type_suffix for each RVV type.  */
 const char *const operand_suffixes[NUM_OP_TYPES] = {
 #define DEF_RVV_OP_TYPE(NAME, SUFFIX) #SUFFIX,
 #include "riscv-vector-builtins.def"
 };
 
-/* Static information about mode_suffix for each RVV type.  */
-const char *const mode_suffixes[NUM_VECTOR_TYPES + 1][BUILT_IN_VSETVL + 1] = {
+/* Static information about type_suffix for each RVV type.  */
+const char *const type_suffixes[NUM_VECTOR_TYPES + 1][BUILT_IN_VSETVL + 1] = {
 #define DEF_RVV_TYPE(NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE,         \
 		     VECTOR_MODE_MIN_VLEN_32, VECTOR_SUFFIX, SCALAR_SUFFIX,    \
 		     VSETVL_SUFFIX)                                            \
@@ -114,7 +114,7 @@ const char *const mode_suffixes[NUM_VECTOR_TYPES + 1][BUILT_IN_VSETVL + 1] = {
 #include "riscv-vector-builtins.def"
 };
 
-/* Static information about mode_suffix for each RVV type.  */
+/* Static information about type_suffix for each RVV type.  */
 const char *const predication_suffixes[NUM_PRED_TYPES] = {
 #define DEF_RVV_PRED_TYPE(NAME, SUFFIX) #SUFFIX,
 #include "riscv-vector-builtins.def"
@@ -124,10 +124,11 @@ const char *const predication_suffixes[NUM_PRED_TYPES] = {
 static const operand_type_index none_ops[] = {OP_TYPE_none, NUM_OP_TYPES};
 
 /* A list of all signed integer will be registered for intrinsic functions.  */
-static const vector_type_pair all_signed[] = {
-#define DEF_RVV_ALL_SIGNED_INTEGER(ID) {VECTOR_TYPE_##ID, VECTOR_TYPE_##ID},
+static const vector_type_field_pair all_signed[] = {
+#define DEF_RVV_ALL_SIGNED_INTEGER(TYPE, REQUIRE)                              \
+  {{VECTOR_TYPE_##TYPE, REQUIRE}, {VECTOR_TYPE_##TYPE, REQUIRE}},
 #include "riscv-vector-builtins.def"
-  {NUM_VECTOR_TYPES, NUM_VECTOR_TYPES}};
+  {{NUM_VECTOR_TYPES, 0}, {NUM_VECTOR_TYPES, 0}}};
 
 /* A list of none preds that will be registered for intrinsic functions.  */
 static const predication_type_index none_preds[]
@@ -284,6 +285,20 @@ register_vector_type (vector_type_index type)
   builtin_types[type][BUILT_IN_VECTOR_PTR] = build_pointer_type (vectype);
 }
 
+/* Check whether all the VECTOR_REQUIRE_* values in REQUIRED_EXTENSIONS are
+   enabled.  */
+static bool
+check_required_extensions (uint64_t required_extensions)
+{
+  uint64_t riscv_isa_flags = (TARGET_DOUBLE_FLOAT << 3)
+			     | (TARGET_HARD_FLOAT << 2)
+			     | ((TARGET_MIN_VLEN > 32) << 1) | TARGET_64BIT;
+  uint64_t missing_extensions = required_extensions & ~riscv_isa_flags;
+  if (missing_extensions != 0)
+    return false;
+  return true;
+}
+
 /* Return a hash code for a function_instance.  */
 hashval_t
 function_instance::hash () const
@@ -291,8 +306,12 @@ function_instance::hash () const
   inchash::hash h;
   /* BASE uniquely determines BASE_NAME, so we don't need to hash both.  */
   h.add_ptr (base);
+  h.add_ptr (shape);
   h.add_int (op);
-  h.add_ptr (types);
+  h.add_int (pair[0].type);
+  h.add_int (pair[1].type);
+  h.add_int (pair[0].required_extensions);
+  h.add_int (pair[1].required_extensions);
   h.add_int (pred);
   return h.end ();
 }
@@ -464,6 +483,11 @@ function_builder::add_unique_function (const function_instance &instance,
 				       tree return_type,
 				       vec<tree> &argument_types)
 {
+  /* Do not add this function if it is invalid.  */
+  if (!check_required_extensions (instance.pair[0].required_extensions
+				  | instance.pair[1].required_extensions))
+    return;
+
   /* Add the function under its full (unique) name.  */
   char *name = shape->get_name (*this, instance, false);
   tree fntype
@@ -505,7 +529,7 @@ gimple_folder::gimple_folder (const function_instance &instance, tree fndecl,
     gsi (gsi_in), call (call_in), lhs (gimple_call_lhs (call_in))
 {}
 
-/* Try to fold the call.  Return the new statement on success and null
+/* Try to fold the call. Return the new statement on success and null
    on failure.  */
 gimple *
 gimple_folder::fold ()
@@ -717,13 +741,14 @@ handle_pragma_vector ()
     builder.register_function_group (function_groups[i]);
 }
 
-/* Return the function decl with SVE function subcode CODE, or error_mark_node
+/* Return the function decl with RVV function subcode CODE, or error_mark_node
    if no such function exists.  */
 tree
 builtin_decl (unsigned int code, bool)
 {
   if (code >= vec_safe_length (registered_functions))
     return error_mark_node;
+
   return (*registered_functions)[code]->decl;
 }
 
@@ -737,7 +762,7 @@ gimple_fold_builtin (unsigned int code, gimple_stmt_iterator *gsi, gcall *stmt)
   return gimple_folder (rfn.instance, rfn.decl, gsi, stmt).fold ();
 }
 
-/* Expand a call to the SVE function with subcode CODE.  EXP is the call
+/* Expand a call to the RVV function with subcode CODE.  EXP is the call
    expression and TARGET is the preferred location for the result.
    Return the value of the lhs.  */
 rtx
