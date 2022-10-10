@@ -106,7 +106,7 @@ const char *const operand_suffixes[NUM_OP_TYPES] = {
 };
 
 /* Static information about type_suffix for each RVV type.  */
-const char *const type_suffixes[NUM_VECTOR_TYPES + 1][BUILT_IN_VSETVL + 1] = {
+const rvv_builtin_suffixes type_suffixes[NUM_VECTOR_TYPES + 1] = {
 #define DEF_RVV_TYPE(NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE,         \
 		     VECTOR_MODE_MIN_VLEN_32, VECTOR_SUFFIX, SCALAR_SUFFIX,    \
 		     VSETVL_SUFFIX)                                            \
@@ -147,8 +147,8 @@ static CONSTEXPR const function_group_info function_groups[] = {
 static GTY (()) tree abi_vector_types[NUM_VECTOR_TYPES + 1];
 
 /* Same, but with the riscv_vector.h "v..._t" name.  */
-extern GTY (()) tree builtin_types[NUM_VECTOR_TYPES + 1][NUM_BUILT_IN_TYPES];
-tree builtin_types[NUM_VECTOR_TYPES + 1][NUM_BUILT_IN_TYPES];
+extern GTY (()) rvv_builtin_types_t builtin_types[NUM_VECTOR_TYPES + 1];
+rvv_builtin_types_t builtin_types[NUM_VECTOR_TYPES + 1];
 
 /* The list of all registered function decls, indexed by code.  */
 static GTY (()) vec<registered_function *, va_gc> *registered_functions;
@@ -213,9 +213,9 @@ build_const_pointer (tree t)
 static void
 register_builtin_type (vector_type_index type, tree eltype, machine_mode mode)
 {
-  builtin_types[type][BUILT_IN_SCALAR] = eltype;
-  builtin_types[type][BUILT_IN_SCALAR_PTR] = build_pointer_type (eltype);
-  builtin_types[type][BUILT_IN_SCALAR_CONST_PTR] = build_const_pointer (eltype);
+  builtin_types[type].scalar = eltype;
+  builtin_types[type].scalar_ptr = build_pointer_type (eltype);
+  builtin_types[type].scalar_const_ptr = build_const_pointer (eltype);
   if (!riscv_v_ext_enabled_vector_mode_p (mode))
     return;
 
@@ -281,8 +281,8 @@ register_vector_type (vector_type_index type)
       && TYPE_MAIN_VARIANT (TREE_TYPE (decl)) == vectype)
     vectype = TREE_TYPE (decl);
 
-  builtin_types[type][BUILT_IN_VECTOR] = vectype;
-  builtin_types[type][BUILT_IN_VECTOR_PTR] = build_pointer_type (vectype);
+  builtin_types[type].vector = vectype;
+  builtin_types[type].vector_ptr = build_pointer_type (vectype);
 }
 
 /* Check whether all the VECTOR_REQUIRE_* values in REQUIRED_EXTENSIONS are

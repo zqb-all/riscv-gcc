@@ -69,7 +69,7 @@ public:
   {
     VLMAX ? e.add_input_operand (Pmode, gen_rtx_REG (Pmode, 0))
 	  : e.add_input_operand (0);
-    tree type = builtin_types[e.pair[0].type][BUILT_IN_VECTOR];
+    tree type = builtin_types[e.pair[0].type].vector;
     machine_mode mode = TYPE_MODE (type);
     e.add_input_operand (Pmode, gen_int_mode (((unsigned int) mode << 2) | 0x2,
 					      Pmode));

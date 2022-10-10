@@ -34,11 +34,11 @@ along with GCC; see the file COPYING3.  If not see
      type used in "build_vector_type_for_mode" when TARGET_MIN_VLEN = 32. For
      example: VECTOR_MODE_MIN_VLEN_32 = VNx1SI for "vint32m1_t".
    7.The 'VECTOR_SUFFIX' define mode suffix for vector type.
-     For example: type_suffixes[VECTOR_TYPE_vin32m1_t][BUILT_IN_VECTOR] = i32m1.
+     For example: type_suffixes[VECTOR_TYPE_vin32m1_t].vector = i32m1.
    8.The 'SCALAR_SUFFIX' define mode suffix for scalar type.
-     For example: type_suffixes[VECTOR_TYPE_vin32m1_t][BUILT_IN_SCALAR] = i32.
+     For example: type_suffixes[VECTOR_TYPE_vin32m1_t].scalar = i32.
    9.The 'VSETVL_SUFFIX' define mode suffix for vsetvli instruction.
-     For example: type_suffixes[VECTOR_TYPE_vin32m1_t][BUILT_IN_VSETVL] = e32m1.
+     For example: type_suffixes[VECTOR_TYPE_vin32m1_t].vsetvl = e32m1.
 */
 
 #ifndef DEF_RVV_TYPE

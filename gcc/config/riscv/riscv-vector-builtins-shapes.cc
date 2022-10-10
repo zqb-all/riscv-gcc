@@ -129,7 +129,7 @@ struct vsetvl_def : public build_base<RELATION_ONE_ONE>
     if (overloaded_p)
       return nullptr;
     b.append_name (instance.base_name);
-    b.append_name (type_suffixes[instance.pair[0].type][BUILT_IN_VSETVL]);
+    b.append_name (type_suffixes[instance.pair[0].type].vsetvl);
     return b.finish_name ();
   }
 };

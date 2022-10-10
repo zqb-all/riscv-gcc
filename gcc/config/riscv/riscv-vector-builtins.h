@@ -125,36 +125,30 @@ enum vector_type_index
   NUM_VECTOR_TYPES
 };
 
-/* Enumerates the built-in Type in builtin_types.  */
-enum builtin_type_index
-{
-  /* Type represents 'vint32m1_t'.  */
-  BUILT_IN_VECTOR,
-  /* Type represents 'int32_t'.  */
-  BUILT_IN_SCALAR,
-  /* Type represents 'vint32m1_t *'.
-     used by segment non-tuple intrinsics.  */
-  BUILT_IN_VECTOR_PTR = 2,
-  /* This enum is not used to index type_suffixes instead of builtin_types.
-     It's used return the correponding suffix for vsetvl instruction.
-     For example:
-       - type_suffixes[VECTOR_TYPE_vint32m1_t][BUILT_IN_VECTOR] = 'i32m1'.
-       - type_suffixes[VECTOR_TYPE_vint32m1_t][BUILT_IN_VSETVL] = 'e32m1'.  */
-  BUILT_IN_VSETVL = 2,
-  /* Type represents 'int32_t *'.  */
-  BUILT_IN_SCALAR_PTR = 3,
-  /* Type represents 'const int32_t *'.  */
-  BUILT_IN_SCALAR_CONST_PTR = 4,
-  /* Number of types.  */
-  NUM_BUILT_IN_TYPES
-};
-
 /* Enumerates the RVV governing predication types.  */
 enum predication_type_index
 {
 #define DEF_RVV_PRED_TYPE(NAME, SUFFIX) PRED_TYPE_##NAME,
 #include "riscv-vector-builtins.def"
   NUM_PRED_TYPES
+};
+
+/* Builtin types that are used to register RVV intrinsics.  */
+struct GTY (()) rvv_builtin_types_t
+{
+  tree vector;
+  tree scalar;
+  tree vector_ptr;
+  tree scalar_ptr;
+  tree scalar_const_ptr;
+};
+
+/* Builtin suffix that are used to register RVV intrinsics.  */
+struct rvv_builtin_suffixes
+{
+  const char *vector;
+  const char *scalar;
+  const char *vsetvl;
 };
 
 /* Static information about a vector type index.
@@ -390,10 +384,9 @@ private:
 };
 
 extern const char *const operand_suffixes[NUM_OP_TYPES];
-extern const char
-  *const type_suffixes[NUM_VECTOR_TYPES + 1][BUILT_IN_VSETVL + 1];
+extern const rvv_builtin_suffixes type_suffixes[NUM_VECTOR_TYPES + 1];
 extern const char *const predication_suffixes[NUM_PRED_TYPES];
-extern tree builtin_types[NUM_VECTOR_TYPES + 1][NUM_BUILT_IN_TYPES];
+extern rvv_builtin_types_t builtin_types[NUM_VECTOR_TYPES + 1];
 
 inline function_instance::function_instance (
   const char *base_name_in, const function_base *base_in,
