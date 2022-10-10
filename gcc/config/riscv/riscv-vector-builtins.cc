@@ -127,7 +127,7 @@ static const operand_type_index none_ops[] = {OP_TYPE_none, NUM_OP_TYPES};
 static const vector_type_field_pair all_signed[] = {
 #define DEF_RVV_ALL_SIGNED_INTEGER(TYPE, REQUIRE)                              \
   {{VECTOR_TYPE_##TYPE, REQUIRE}, {VECTOR_TYPE_##TYPE, REQUIRE}},
-#include "riscv-vector-builtins.def"
+#include "riscv-vector-builtins-types.def"
   {{NUM_VECTOR_TYPES, 0}, {NUM_VECTOR_TYPES, 0}}};
 
 /* A list of none preds that will be registered for intrinsic functions.  */
@@ -138,7 +138,7 @@ static const predication_type_index none_preds[]
 static CONSTEXPR const function_group_info function_groups[] = {
 #define DEF_RVV_FUNCTION(NAME, SHAPE, OPS, TYPES, PREDS)                       \
   {#NAME, &bases::NAME, &shapes::SHAPE, OPS, TYPES, PREDS},
-#include "riscv-vector-builtins.def"
+#include "riscv-vector-builtins-functions.def"
 };
 
 /* The RVV types, with their built-in

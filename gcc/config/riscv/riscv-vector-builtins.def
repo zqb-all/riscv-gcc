@@ -305,9 +305,6 @@ DEF_RVV_PRED_TYPE (m, _m)
 DEF_RVV_PRED_TYPE (tam, _tam)
 DEF_RVV_PRED_TYPE (tum, _tum)
 
-#include "riscv-vector-builtins-types.def"
-#include "riscv-vector-builtins-functions.def"
-
 #undef DEF_RVV_PRED_TYPE
 #undef DEF_RVV_OP_TYPE
 #undef DEF_RVV_TYPE
