@@ -38,7 +38,7 @@ along with GCC; see the file COPYING3. If not see
 #endif
 
 /* 6. Configuration-Setting Instructions.  */
-DEF_RVV_FUNCTION (vsetvlmax, configure, none_ops, all_signed, none_preds)
 DEF_RVV_FUNCTION (vsetvl, vsetvl, none_ops, all_signed, none_preds)
+DEF_RVV_FUNCTION (vsetvlmax, vsetvlmax, none_ops, all_signed, none_preds)
 
 #undef DEF_RVV_FUNCTION

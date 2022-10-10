@@ -44,8 +44,8 @@ enum relation_index
 };
 
 namespace shapes {
-extern const function_shape *const configure;
 extern const function_shape *const vsetvl;
+extern const function_shape *const vsetvlmax;
 }
 
 } // end namespace riscv_vector

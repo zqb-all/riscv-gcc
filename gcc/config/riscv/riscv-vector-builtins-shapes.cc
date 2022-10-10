@@ -96,38 +96,32 @@ build_all (function_builder &b, relation_index relation,
   const function_shape *const NAME = &NAME##_obj;                              \
   }
 
-/* Base class for one to one functions.  */
-struct one_one_base : public function_shape
+/* Base class for for build.  */
+template<enum relation_index RELATION>
+struct build_base : public function_shape
 {
   void build (function_builder &b,
 	      const function_group_info &group) const override
   {
-    build_all (b, RELATION_ONE_ONE, group);
+    build_all (b, RELATION, group);
   }
 };
 
-/* Base class for one to many functions.  */
-struct one_many_base : public function_shape
-{
-  void build (function_builder &b,
-	      const function_group_info &group) const override
-  {
-    build_all (b, RELATION_ONE_MANY, group);
-  }
-};
-
-/* Base class for return 'size_t' instructions.  */
-struct size_return_base : public one_one_base
+/* vsetvl_def class.  */
+template<bool VLMAX>
+struct vsetvl_def : public build_base<RELATION_ONE_ONE>
 {
   tree get_return_type (const vector_type_field_pair) const override
   {
     return size_type_node;
   }
-};
 
-/* configure_def class.  */
-struct configure_def : public size_return_base
-{
+  void allocate_argument_types (const function_instance &,
+				vec<tree> &argument_types) const
+  {
+    argument_types.quick_push (VLMAX ? void_type_node : size_type_node);
+  }
+
   char *get_name (function_builder &b, const function_instance &instance,
 		  bool overloaded_p) const override
   {
@@ -140,16 +134,13 @@ struct configure_def : public size_return_base
   }
 };
 
-/* vsetvl class.  */
-struct vsetvl_def : public configure_def
-{
-  void allocate_argument_types (const function_instance &,
-				vec<tree> &argument_types) const
-  {
-    argument_types.quick_push (size_type_node);
-  }
-};
+static CONSTEXPR const vsetvl_def<false> vsetvl_obj;
+namespace shapes {
+const function_shape *const vsetvl = &vsetvl_obj;
+}
+static CONSTEXPR const vsetvl_def<true> vsetvlmax_obj;
+namespace shapes {
+const function_shape *const vsetvlmax = &vsetvlmax_obj;
+}
 
-SHAPE (configure)
-SHAPE (vsetvl)
 } // end namespace riscv_vector
