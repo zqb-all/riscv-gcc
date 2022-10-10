@@ -4135,24 +4135,27 @@ riscv_print_operand (FILE *file, rtx op, int letter)
 
   switch (letter)
     {
-      case 'v': {
+      case 'm': {
 	if (code == CONST_INT)
 	  {
-	    /* It's vsevl instruction, generate SEW,LMUL,TA,MA string.  */
-	    machine_mode mode = (machine_mode) (UINTVAL (op) >> 2);
-	    unsigned int sew = GET_MODE_BITSIZE (GET_MODE_INNER (mode));
-	    bool fractional_p
-	      = known_lt (GET_MODE_SIZE (mode), BYTES_PER_RISCV_VECTOR);
-	    unsigned int factor
-	      = fractional_p
-		  ? exact_div (BYTES_PER_RISCV_VECTOR, GET_MODE_SIZE (mode))
-		      .to_constant ()
-		  : exact_div (GET_MODE_SIZE (mode), BYTES_PER_RISCV_VECTOR)
-		      .to_constant ();
-	    const char *lmul = fractional_p ? "mf" : "m";
-	    const char *tail = (UINTVAL (op) >> 1) & 0x1 ? "ta" : "tu";
-	    const char *mask = UINTVAL (op) & 0x1 ? "ma" : "mu";
-	    asm_fprintf (file, "e%d,%s%d,%s,%s", sew, lmul, factor, tail, mask);
+	    /* LMUL. Define the bitmap rule as follows:
+	       |      4       | 3 2 1 0 |
+	       | fractional_p | factor  |
+	    */
+	    bool fractional_p = (UINTVAL (op) >> 4) & 0x1;
+	    unsigned int factor = UINTVAL (op) & 0xf;
+	    asm_fprintf (file, "%s%d", fractional_p ? "mf" : "m", factor);
+	  }
+	else
+	  output_operand_lossage ("invalid vector constant");
+	break;
+      }
+      case 'p': {
+	if (code == CONST_INT)
+	  {
+	    /* Tail && Mask policy.  */
+	    bool agnostic_p = UINTVAL (op) & 0x1;
+	    asm_fprintf (file, "%s", agnostic_p ? "a" : "u");
 	  }
 	else
 	  output_operand_lossage ("invalid vector constant");

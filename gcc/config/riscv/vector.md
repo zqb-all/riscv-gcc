@@ -46,31 +46,24 @@
 ;; !x0 | x0  | ~0        | Set vl to VLMAX
 ;; operands[0] is VL.
 ;; operands[1] is AVL.
-;; operands[2] is machine_mode concatenate with Tail && Mask policy.
-;; The bitmap value of operands[2] is as follows:
-;; hi<----------------------------lo
-;; |------------| 1 bit  | 1 bit  |
-;; |machine_mode|  tail  |  mask  |
-;; machine_mode specifies SEW and LMUL:
-;;  - VNx2SI describes SEW = 32, LMUL = M1 when TARGET_MIN_VLEN > 32.
-;;  - VNx2SI describes SEW = 32, LMUL = M2 when TARGET_MIN_VLEN = 32.
-;; Tail && Mask policy:
-;;  - 0x00: tu, mu.
-;;  - 0x01: tu, ma.
-;;  - 0x10: ta, mu.
-;;  - 0x11: ta, ma.
 (define_insn "@vsetvl<mode>"
   [(set (match_operand:P 0 "register_operand" "=r,r")
 	(unspec:P [(match_operand:P 1 "csr_operand" "r,K")
-		   (match_operand 2 "const_int_operand" "i,i")] UNSPEC_VSETVL))
+		   (match_operand 2 "const_int_operand" "i,i") ;; SEW
+		   (match_operand 3 "const_int_operand" "i,i") ;; LMUL
+		   (match_operand 4 "const_int_operand" "i,i") ;; Tail policy = 0 or 1 (undisturbed/agnostic)
+		   (match_operand 5 "const_int_operand" "i,i") ;; Mask policy = 0 or 1 (undisturbed/agnostic)
+		  ] UNSPEC_VSETVL))
    (set (reg:SI VL_REGNUM)
 	(unspec:SI [(match_dup 1)
-		    (match_dup 2)] UNSPEC_VSETVL))
+		    (match_dup 2)
+		    (match_dup 3)] UNSPEC_VSETVL))
    (set (reg:SI VTYPE_REGNUM)
-	(unspec:SI [(match_dup 2)] UNSPEC_VSETVL))]
+	(unspec:SI [(match_dup 2)
+		    (match_dup 3)
+		    (match_dup 4)
+		    (match_dup 5)] UNSPEC_VSETVL))]
   "TARGET_VECTOR"
-  "@
-   vsetvli\t%0,%1,%v2
-   vsetivli\t%0,%1,%v2"
+  "vset%i1vli\t%0,%1,e%2,%m3,t%p4,m%p5"
   [(set_attr "type" "vsetvl")
    (set_attr "mode" "<MODE>")])
