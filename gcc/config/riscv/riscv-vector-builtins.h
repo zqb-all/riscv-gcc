@@ -273,25 +273,6 @@ function_call_info::function_returns_void_p ()
   return TREE_TYPE (TREE_TYPE (fndecl)) == void_type_node;
 }
 
-/* A class for folding a gimple function call.  */
-class gimple_folder : public function_call_info
-{
-public:
-  gimple_folder (const function_instance &, tree, gimple_stmt_iterator *,
-		 gcall *);
-
-  gimple *fold ();
-
-  /* Where to insert extra statements that feed the final replacement.  */
-  gimple_stmt_iterator *gsi;
-
-  /* The call we're folding.  */
-  gcall *call;
-
-  /* The result of the call, or null if none.  */
-  tree lhs;
-};
-
 /* A class for expanding a function call into RTL.  */
 class function_expander : public function_call_info
 {
@@ -327,10 +308,6 @@ public:
   /* Return a set of CP_* flags that describe what the function might do,
      in addition to reading its arguments and returning a result.  */
   virtual unsigned int call_properties (const function_instance &) const;
-
-  /* Try to fold the given gimple call.  Return the new gimple statement
-     on success, otherwise return null.  */
-  virtual gimple *fold (gimple_folder &) const { return NULL; }
 
   /* Expand the given call into rtl.  Return the result of the function,
      or an arbitrary value if the function doesn't return a result.  */

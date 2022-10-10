@@ -86,7 +86,6 @@ extern void riscv_atomic_assign_expand_fenv (tree *, tree *, tree *);
 extern rtx riscv_expand_builtin (tree, rtx, rtx, machine_mode, int);
 extern tree riscv_builtin_decl (unsigned int, bool);
 extern void riscv_init_builtins (void);
-extern bool riscv_gimple_fold_builtin (gimple_stmt_iterator *);
 
 /* Routines implemented in riscv-common.cc.  */
 extern std::string riscv_arch_str (bool version_p = true);
@@ -126,7 +125,6 @@ extern bool verify_type_context (location_t, type_context_kind, const_tree, bool
 #endif
 extern void handle_pragma_vector (void);
 extern tree builtin_decl (unsigned, bool);
-extern gimple *gimple_fold_builtin (unsigned int, gimple_stmt_iterator *, gcall *);
 extern rtx expand_builtin (unsigned int, tree, rtx);
 }
 

@@ -6622,9 +6622,6 @@ riscv_vector_alignment (const_tree type)
 #undef TARGET_VECTOR_ALIGNMENT
 #define TARGET_VECTOR_ALIGNMENT riscv_vector_alignment
 
-#undef TARGET_GIMPLE_FOLD_BUILTIN
-#define TARGET_GIMPLE_FOLD_BUILTIN riscv_gimple_fold_builtin
-
 struct gcc_target targetm = TARGET_INITIALIZER;
 
 #include "gt-riscv.h"

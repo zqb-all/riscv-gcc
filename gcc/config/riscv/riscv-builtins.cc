@@ -357,33 +357,3 @@ riscv_atomic_assign_expand_fenv (tree *hold, tree *clear, tree *update)
   *clear = build_call_expr (fsflags, 1, old_flags);
   *update = NULL_TREE;
 }
-
-/* Implement TARGET_GIMPLE_FOLD_BUILTIN.  */
-
-bool
-riscv_gimple_fold_builtin (gimple_stmt_iterator *gsi)
-{
-  gcall *stmt = as_a<gcall *> (gsi_stmt (*gsi));
-  tree fndecl = gimple_call_fndecl (stmt);
-  unsigned int code = DECL_MD_FUNCTION_CODE (fndecl);
-  unsigned int subcode = code >> RISCV_BUILTIN_SHIFT;
-  gimple *new_stmt = NULL;
-  switch (code & RISCV_BUILTIN_CLASS)
-    {
-    /* Gernal builtin can fold gimple if necessary,
-       may wrapp it into a function in the future.  */
-    case RISCV_BUILTIN_GENERAL:
-      return false;
-
-    case RISCV_BUILTIN_VECTOR:
-      new_stmt = riscv_vector::gimple_fold_builtin (subcode, gsi, stmt);
-      break;
-    }
-
-  if (!new_stmt)
-    return false;
-
-  gsi_replace (gsi, new_stmt, true);
-
-  return true;
-}

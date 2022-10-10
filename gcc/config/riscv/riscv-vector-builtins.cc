@@ -523,31 +523,6 @@ function_call_info::function_call_info (location_t location_in,
   : function_instance (instance_in), location (location_in), fndecl (fndecl_in)
 {}
 
-gimple_folder::gimple_folder (const function_instance &instance, tree fndecl,
-			      gimple_stmt_iterator *gsi_in, gcall *call_in)
-  : function_call_info (gimple_location (call_in), instance, fndecl),
-    gsi (gsi_in), call (call_in), lhs (gimple_call_lhs (call_in))
-{}
-
-/* Try to fold the call. Return the new statement on success and null
-   on failure.  */
-gimple *
-gimple_folder::fold ()
-{
-  /* Don't fold anything when TARGET_VECTOR is disabled; emit an error during
-     expansion instead.  */
-  if (!TARGET_VECTOR)
-    return NULL;
-
-  /* Punt if the function has a return type and no result location is
-     provided.  The attributes should allow target-independent code to
-     remove the calls if appropriate.  */
-  if (!lhs && TREE_TYPE (gimple_call_fntype (call)) != void_type_node)
-    return NULL;
-
-  return base->fold (*this);
-}
-
 function_expander::function_expander (const function_instance &instance,
 				      tree fndecl_in, tree exp_in,
 				      rtx target_in)
@@ -750,16 +725,6 @@ builtin_decl (unsigned int code, bool)
     return error_mark_node;
 
   return (*registered_functions)[code]->decl;
-}
-
-/* Attempt to fold STMT, given that it's a call to the RVV function
-   with subcode CODE.  Return the new statement on success and null
-   on failure.  Insert any other new statements at GSI.  */
-gimple *
-gimple_fold_builtin (unsigned int code, gimple_stmt_iterator *gsi, gcall *stmt)
-{
-  registered_function &rfn = *(*registered_functions)[code];
-  return gimple_folder (rfn.instance, rfn.decl, gsi, stmt).fold ();
 }
 
 /* Expand a call to the RVV function with subcode CODE.  EXP is the call
