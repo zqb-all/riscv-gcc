@@ -34,16 +34,17 @@
 namespace riscv_vector {
 
 /* Add one function instance for GROUP, using operand suffix at index OI,
-   mode suffix at index PAIR && bi and predication suffix at index pi.  */
+   mode suffix at index PAIR && bi and predication suffix at index pred_idx.  */
 static void
 build_one (function_builder &b, const function_group_info &group,
-	   unsigned int oi, unsigned int pi, const vector_type_field_pair &pair)
+	   unsigned int oprnd_idx, unsigned int pred_idx,
+	   const vector_type_field_pair &pair)
 {
   /* Byte forms of non-tuple vlxusegei take 21 arguments.  */
   auto_vec<tree, 21> argument_types;
   function_instance function_instance (group.base_name, *group.base,
-				       *group.shape, group.ops[oi], pair,
-				       group.preds[pi]);
+				       *group.shape, group.ops[oprnd_idx], pair,
+				       group.preds[pred_idx]);
   tree return_type = (*group.shape)->get_return_type (pair);
   (*group.shape)->allocate_argument_types (function_instance, argument_types);
   b.add_unique_function (function_instance, (*group.shape), return_type,
@@ -53,21 +54,22 @@ build_one (function_builder &b, const function_group_info &group,
 /* Add function instances for all combination from relation.  */
 static void
 build_group (function_builder &b, relation_index relation,
-	     const function_group_info &group, unsigned int oi, unsigned int pi,
-	     vector_type_field type)
+	     const function_group_info &group, unsigned int oprnd_idx,
+	     unsigned int pred_idx, vector_type_field type)
 {
   if (relation == RELATION_ONE_ONE)
     {
       vector_type_field_pair pair = {type, type};
-      build_one (b, group, oi, pi, pair);
+      build_one (b, group, oprnd_idx, pred_idx, pair);
     }
   else
     {
-      for (unsigned int ti = 0; group.pairs[ti][1].type != NUM_VECTOR_TYPES;
-	   ++ti)
+      for (unsigned int vec_type_idx = 0;
+	   group.pairs[vec_type_idx][1].type != NUM_VECTOR_TYPES;
+	   ++vec_type_idx)
 	{
-	  vector_type_field_pair pair = {type, group.pairs[ti][1]};
-	  build_one (b, group, oi, pi, pair);
+	  vector_type_field_pair pair = {type, group.pairs[vec_type_idx][1]};
+	  build_one (b, group, oprnd_idx, pred_idx, pair);
 	}
     }
 }
@@ -81,11 +83,15 @@ static void
 build_all (function_builder &b, relation_index relation,
 	   const function_group_info &group)
 {
-  for (unsigned int oi = 0; group.ops[oi] != NUM_OP_TYPES; ++oi)
-    for (unsigned int pi = 0; group.preds[pi] != NUM_PRED_TYPES; ++pi)
-      for (unsigned int ti = 0; group.pairs[ti][0].type != NUM_VECTOR_TYPES;
-	   ++ti)
-	build_group (b, relation, group, oi, pi, group.pairs[ti][0]);
+  for (unsigned int oprnd_idx = 0; group.ops[oprnd_idx] != NUM_OP_TYPES;
+       ++oprnd_idx)
+    for (unsigned int pred_idx = 0; group.preds[pred_idx] != NUM_PRED_TYPES;
+	 ++pred_idx)
+      for (unsigned int vec_type_idx = 0;
+	   group.pairs[vec_type_idx][0].type != NUM_VECTOR_TYPES;
+	   ++vec_type_idx)
+	build_group (b, relation, group, oprnd_idx, pred_idx,
+		     group.pairs[vec_type_idx][0]);
 }
 
 /* Declare the function shape NAME, pointing it to an instance
@@ -97,7 +103,7 @@ build_all (function_builder &b, relation_index relation,
   }
 
 /* Base class for for build.  */
-template<enum relation_index RELATION>
+template <enum relation_index RELATION>
 struct build_base : public function_shape
 {
   void build (function_builder &b,
@@ -108,8 +114,7 @@ struct build_base : public function_shape
 };
 
 /* vsetvl_def class.  */
-template<bool VLMAX>
-struct vsetvl_def : public build_base<RELATION_ONE_ONE>
+template <bool VLMAX> struct vsetvl_def : public build_base<RELATION_ONE_ONE>
 {
   tree get_return_type (const vector_type_field_pair) const override
   {
