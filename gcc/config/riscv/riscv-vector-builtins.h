@@ -111,7 +111,8 @@ static const unsigned int CP_WRITE_CSR = 1U << 6;
 /* Enumerates the RVV operand types.  */
 enum operand_type_index
 {
-#define DEF_RVV_OP_TYPE(NAME, SUFFIX) OP_TYPE_##NAME,
+  OP_TYPE_none,
+#define DEF_RVV_OP_TYPE(NAME) OP_TYPE_##NAME,
 #include "riscv-vector-builtins.def"
   NUM_OP_TYPES
 };
@@ -128,7 +129,8 @@ enum vector_type_index
 /* Enumerates the RVV governing predication types.  */
 enum predication_type_index
 {
-#define DEF_RVV_PRED_TYPE(NAME, SUFFIX) PRED_TYPE_##NAME,
+  PRED_TYPE_none,
+#define DEF_RVV_PRED_TYPE(NAME) PRED_TYPE_##NAME,
 #include "riscv-vector-builtins.def"
   NUM_PRED_TYPES
 };

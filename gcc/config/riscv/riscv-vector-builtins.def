@@ -48,15 +48,15 @@ along with GCC; see the file COPYING3.  If not see
 #endif
 
 /* Use "DEF_RVV_OP_TYPE" macro to define RVV operand types.
-   The 'SUFFIX' will be concatenated into intrinsic function name.  */
+   The 'NAME' will be concatenated into intrinsic function name.  */
 #ifndef DEF_RVV_OP_TYPE
-#define DEF_RVV_OP_TYPE(NAME, SUFFIX)
+#define DEF_RVV_OP_TYPE(NAME)
 #endif
 
 /* Use "DEF_RVV_PRED_TYPE" macro to define RVV predication types.
-   The 'SUFFIX' will be concatenated into intrinsic function name.  */
+   The 'NAME' will be concatenated into intrinsic function name.  */
 #ifndef DEF_RVV_PRED_TYPE
-#define DEF_RVV_PRED_TYPE(NAME, SUFFIX)
+#define DEF_RVV_PRED_TYPE(NAME)
 #endif
 
 /* SEW/LMUL = 64:
@@ -268,42 +268,40 @@ DEF_RVV_TYPE (vfloat64m4_t, 17, __rvv_float64m4_t, double, VNx4DF, VOID, _f64m4,
 DEF_RVV_TYPE (vfloat64m8_t, 17, __rvv_float64m8_t, double, VNx8DF, VOID, _f64m8,
 	      _f64, _e64m8)
 
-DEF_RVV_OP_TYPE (none, )
-DEF_RVV_OP_TYPE (vv, _vv)
-DEF_RVV_OP_TYPE (vx, _vx)
-DEF_RVV_OP_TYPE (v, _v)
-DEF_RVV_OP_TYPE (wv, _wv)
-DEF_RVV_OP_TYPE (wx, _wx)
-DEF_RVV_OP_TYPE (x_x_v, _x_x_v)
-DEF_RVV_OP_TYPE (vf2, _vf2)
-DEF_RVV_OP_TYPE (vf4, _vf4)
-DEF_RVV_OP_TYPE (vf8, _vf8)
-DEF_RVV_OP_TYPE (vvm, _vvm)
-DEF_RVV_OP_TYPE (vxm, _vxm)
-DEF_RVV_OP_TYPE (x_x_w, _x_x_w)
-DEF_RVV_OP_TYPE (v_v, _v_v)
-DEF_RVV_OP_TYPE (v_x, _v_x)
-DEF_RVV_OP_TYPE (vs, _vs)
-DEF_RVV_OP_TYPE (mm, _mm)
-DEF_RVV_OP_TYPE (m, _m)
-DEF_RVV_OP_TYPE (vf, _vf)
-DEF_RVV_OP_TYPE (vm, _vm)
-DEF_RVV_OP_TYPE (wf, _wf)
-DEF_RVV_OP_TYPE (vfm, _vfm)
-DEF_RVV_OP_TYPE (v_f, _v_f)
+DEF_RVV_OP_TYPE (vv)
+DEF_RVV_OP_TYPE (vx)
+DEF_RVV_OP_TYPE (v)
+DEF_RVV_OP_TYPE (wv)
+DEF_RVV_OP_TYPE (wx)
+DEF_RVV_OP_TYPE (x_x_v)
+DEF_RVV_OP_TYPE (vf2)
+DEF_RVV_OP_TYPE (vf4)
+DEF_RVV_OP_TYPE (vf8)
+DEF_RVV_OP_TYPE (vvm)
+DEF_RVV_OP_TYPE (vxm)
+DEF_RVV_OP_TYPE (x_x_w)
+DEF_RVV_OP_TYPE (v_v)
+DEF_RVV_OP_TYPE (v_x)
+DEF_RVV_OP_TYPE (vs)
+DEF_RVV_OP_TYPE (mm)
+DEF_RVV_OP_TYPE (m)
+DEF_RVV_OP_TYPE (vf)
+DEF_RVV_OP_TYPE (vm)
+DEF_RVV_OP_TYPE (wf)
+DEF_RVV_OP_TYPE (vfm)
+DEF_RVV_OP_TYPE (v_f)
 
-DEF_RVV_PRED_TYPE (none, )
-DEF_RVV_PRED_TYPE (ta, _ta)
-DEF_RVV_PRED_TYPE (tu, _tu)
-DEF_RVV_PRED_TYPE (ma, _ma)
-DEF_RVV_PRED_TYPE (mu, _mu)
-DEF_RVV_PRED_TYPE (tama, _tama)
-DEF_RVV_PRED_TYPE (tamu, _tamu)
-DEF_RVV_PRED_TYPE (tuma, _tuma)
-DEF_RVV_PRED_TYPE (tumu, _tumu)
-DEF_RVV_PRED_TYPE (m, _m)
-DEF_RVV_PRED_TYPE (tam, _tam)
-DEF_RVV_PRED_TYPE (tum, _tum)
+DEF_RVV_PRED_TYPE (ta)
+DEF_RVV_PRED_TYPE (tu)
+DEF_RVV_PRED_TYPE (ma)
+DEF_RVV_PRED_TYPE (mu)
+DEF_RVV_PRED_TYPE (tama)
+DEF_RVV_PRED_TYPE (tamu)
+DEF_RVV_PRED_TYPE (tuma)
+DEF_RVV_PRED_TYPE (tumu)
+DEF_RVV_PRED_TYPE (m)
+DEF_RVV_PRED_TYPE (tam)
+DEF_RVV_PRED_TYPE (tum)
 
 #undef DEF_RVV_PRED_TYPE
 #undef DEF_RVV_OP_TYPE

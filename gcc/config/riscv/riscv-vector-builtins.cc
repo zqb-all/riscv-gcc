@@ -101,7 +101,7 @@ static CONSTEXPR const vector_type_info vector_types[] = {
 
 /* Static information about type_suffix for each RVV type.  */
 const char *const operand_suffixes[NUM_OP_TYPES] = {
-#define DEF_RVV_OP_TYPE(NAME, SUFFIX) #SUFFIX,
+#define DEF_RVV_OP_TYPE(NAME) "_" # NAME,
 #include "riscv-vector-builtins.def"
 };
 
@@ -116,7 +116,7 @@ const rvv_builtin_suffixes type_suffixes[NUM_VECTOR_TYPES + 1] = {
 
 /* Static information about type_suffix for each RVV type.  */
 const char *const predication_suffixes[NUM_PRED_TYPES] = {
-#define DEF_RVV_PRED_TYPE(NAME, SUFFIX) #SUFFIX,
+#define DEF_RVV_PRED_TYPE(NAME) "_" # NAME,
 #include "riscv-vector-builtins.def"
 };
 
