@@ -99,13 +99,13 @@ static CONSTEXPR const vector_type_info vector_types[] = {
 #include "riscv-vector-builtins.def"
 };
 
-/* Static information about type_suffix for each RVV type.  */
+/* Static information about operand suffix for each RVV type.  */
 const char *const operand_suffixes[NUM_OP_TYPES] = {
 #define DEF_RVV_OP_TYPE(NAME) "_" # NAME,
 #include "riscv-vector-builtins.def"
 };
 
-/* Static information about type_suffix for each RVV type.  */
+/* Static information about type suffix for each RVV type.  */
 const rvv_builtin_suffixes type_suffixes[NUM_VECTOR_TYPES + 1] = {
 #define DEF_RVV_TYPE(NAME, NCHARS, ABI_NAME, SCALAR_TYPE, VECTOR_MODE,         \
 		     VECTOR_MODE_MIN_VLEN_32, VECTOR_SUFFIX, SCALAR_SUFFIX,    \
@@ -114,7 +114,7 @@ const rvv_builtin_suffixes type_suffixes[NUM_VECTOR_TYPES + 1] = {
 #include "riscv-vector-builtins.def"
 };
 
-/* Static information about type_suffix for each RVV type.  */
+/* Static information about predication suffix for each RVV type.  */
 const char *const predication_suffixes[NUM_PRED_TYPES] = {
 #define DEF_RVV_PRED_TYPE(NAME) "_" # NAME,
 #include "riscv-vector-builtins.def"
