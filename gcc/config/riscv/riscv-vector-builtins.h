@@ -343,25 +343,6 @@ public:
     = 0;
 };
 
-/* RAII class for enabling enough RVV features to define the built-in
-   types and implement the riscv_vector.h pragma.
-
-   Note: According to 'TYPE_MODE' macro implementation, we need set
-   have_regs_of_mode[mode] to be true if we want to get the exact mode
-   from 'TYPE_MODE'. However, have_regs_of_mode has not been set yet in
-   targetm.init_builtins (). We need rvv_switcher to set have_regs_of_mode
-   before targetm.init_builtins () and recover back have_regs_of_mode
-   after targetm.init_builtins ().  */
-class rvv_switcher
-{
-public:
-  rvv_switcher ();
-  ~rvv_switcher ();
-
-private:
-  bool m_old_have_regs_of_mode[MAX_MACHINE_MODE];
-};
-
 extern const char *const operand_suffixes[NUM_OP_TYPES];
 extern const rvv_builtin_suffixes type_suffixes[NUM_VECTOR_TYPES + 1];
 extern const char *const predication_suffixes[NUM_PRED_TYPES];

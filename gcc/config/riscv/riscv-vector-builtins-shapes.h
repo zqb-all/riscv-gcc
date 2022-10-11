@@ -25,8 +25,7 @@ namespace riscv_vector {
 
 enum relation_index
 {
-  /* Relation between in vector_type_field_pair[n][0] and
-     vector_type_field_pair[n][1].
+  /* Relation in vector_type_field_pair.
 
      Note: The size of vector_type_field_pair = n.
 

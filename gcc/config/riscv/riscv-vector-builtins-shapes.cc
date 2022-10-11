@@ -114,7 +114,8 @@ struct build_base : public function_shape
 };
 
 /* vsetvl_def class.  */
-template <bool VLMAX> struct vsetvl_def : public build_base<RELATION_ONE_ONE>
+template <bool VLMAX> 
+struct vsetvl_def : public build_base<RELATION_ONE_ONE>
 {
   tree get_return_type (const vector_type_field_pair) const override
   {
